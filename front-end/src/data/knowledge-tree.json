@@ -1,0 +1,245 @@
+{
+  "topic": "Knowledge Tree",
+  "branches": [
+    {
+      "name": "Software Engineering",
+      "subtopics": [
+        {
+          "name": "Networking",
+          "subtopics": [
+            "Network Protocols (TCP/IP, HTTP, WebSocket)",
+            "Network Security (SSL/TLS, Firewalls)",
+            "Distributed Systems",
+            "API Design and REST Architecture",
+            "Load Balancing and Scaling"
+          ]
+        },
+        {
+          "name": "Security",
+          "subtopics": [
+            "Authentication and Authorization",
+            "Cryptography Fundamentals",
+            "Secure Coding Practices",
+            "Security Testing and Penetration Testing",
+            "Compliance and Security Standards"
+          ]
+        },
+        {
+          "name": "Algorithms",
+          "subtopics": [
+            "Data Structures and Complexity Analysis",
+            "Search and Sort Algorithms",
+            "Graph Algorithms",
+            "Dynamic Programming",
+            "Algorithm Design Patterns"
+          ]
+        },
+        {
+          "name": "Software Architecture",
+          "subtopics": [
+            "Design Patterns",
+            "Microservices Architecture",
+            "Event-Driven Architecture",
+            "Domain-Driven Design",
+            "System Integration Patterns"
+          ]
+        },
+        {
+          "name": "Development Practices",
+          "subtopics": [
+            "Agile Methodologies",
+            "Test-Driven Development",
+            "Continuous Integration/Continuous Deployment",
+            "Code Review Best Practices",
+            "Version Control Strategies"
+          ]
+        },
+        {
+          "name": "Database Systems",
+          "subtopics": [
+            "Relational Databases",
+            "NoSQL Databases",
+            "Database Design and Normalization",
+            "Query Optimization",
+            "Data Migration Strategies"
+          ]
+        },
+        {
+          "name": "Frontend Development",
+          "subtopics": [
+            "Web Technologies (HTML, CSS, JavaScript)",
+            "Frontend Frameworks (React, Angular, Vue)",
+            "Responsive Design",
+            "Web Performance Optimization",
+            "Progressive Web Apps"
+          ]
+        },
+        {
+          "name": "Backend Development",
+          "subtopics": [
+            "Server-Side Programming",
+            "API Development",
+            "Caching Strategies",
+            "Message Queues",
+            "Background Processing"
+          ]
+        },
+        {
+          "name": "DevOps",
+          "subtopics": [
+            "Infrastructure as Code",
+            "Containerization and Orchestration",
+            "Monitoring and Logging",
+            "Cloud Computing",
+            "Automation Tools"
+          ]
+        },
+        {
+          "name": "Quality Assurance",
+          "subtopics": [
+            "Testing Methodologies",
+            "Test Automation",
+            "Performance Testing",
+            "Security Testing",
+            "Quality Metrics and KPIs"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Physical Health",
+      "subtopics": [
+        {
+          "name": "Exercise",
+          "subtopics": [
+            "Strength Training",
+            "Cardiovascular Exercise",
+            "Flexibility and Mobility",
+            "Sports and Activities",
+            "Exercise Programming"
+          ]
+        },
+        {
+          "name": "Nutrition",
+          "subtopics": [
+            "Macronutrients",
+            "Micronutrients",
+            "Dietary Planning",
+            "Nutritional Science",
+            "Special Diets"
+          ]
+        },
+        {
+          "name": "Recovery",
+          "subtopics": [
+            "Sleep and Rest",
+            "Injury Prevention",
+            "Recovery Techniques",
+            "Stress Management",
+            "Mental Health"
+          ]
+        },
+        {
+          "name": "Lifestyle",
+          "subtopics": [
+            "Habit Formation",
+            "Time Management",
+            "Work-Life Balance",
+            "Environmental Factors",
+            "Long-term Health"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Mental Health",
+      "subtopics": [
+        {
+          "name": "Psychological Well-being",
+          "subtopics": [
+            "Stress Management",
+            "Anxiety and Depression",
+            "Mindfulness and Meditation",
+            "Cognitive Behavioral Therapy",
+            "Positive Psychology"
+          ]
+        },
+        {
+          "name": "Brain Health",
+          "subtopics": [
+            "Neuroplasticity",
+            "Memory and Learning",
+            "Sleep and Brain Function",
+            "Nutrition for Brain Health",
+            "Mental Exercise"
+          ]
+        },
+        {
+          "name": "Mental Disorders",
+          "subtopics": [
+            "Understanding Mental Illness",
+            "Treatment Options",
+            "Support Systems",
+            "Coping Strategies",
+            "Recovery and Management"
+          ]
+        },
+        {
+          "name": "Mental Resilience",
+          "subtopics": [
+            "Building Resilience",
+            "Emotional Regulation",
+            "Crisis Management",
+            "Adaptive Thinking",
+            "Growth Mindset"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Emotional Development",
+      "subtopics": [
+        {
+          "name": "Emotional Intelligence",
+          "subtopics": [
+            "Self-Awareness",
+            "Self-Regulation",
+            "Social Awareness",
+            "Relationship Management",
+            "Empathy Development"
+          ]
+        },
+        {
+          "name": "Personal Growth",
+          "subtopics": [
+            "Self-Discovery",
+            "Goal Setting",
+            "Life Purpose",
+            "Values and Beliefs",
+            "Personal Transformation"
+          ]
+        },
+        {
+          "name": "Relationships",
+          "subtopics": [
+            "Communication Skills",
+            "Conflict Resolution",
+            "Building Trust",
+            "Boundary Setting",
+            "Healthy Relationships"
+          ]
+        },
+        {
+          "name": "Emotional Well-being",
+          "subtopics": [
+            "Emotional Balance",
+            "Self-Care Practices",
+            "Emotional Expression",
+            "Coping Mechanisms",
+            "Joy and Fulfillment"
+          ]
+        }
+      ]
+    }
+  ]
+} 

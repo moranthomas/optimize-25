@@ -1,0 +1,105 @@
+{
+  "topic": "Software Engineering",
+  "branches": [
+    {
+      "name": "Networking",
+      "subtopics": [
+        "Network Protocols (TCP/IP, HTTP, WebSocket)",
+        "Network Security (SSL/TLS, Firewalls)",
+        "Distributed Systems",
+        "API Design and REST Architecture",
+        "Load Balancing and Scaling"
+      ]
+    },
+    {
+      "name": "Security",
+      "subtopics": [
+        "Authentication and Authorization",
+        "Cryptography Fundamentals",
+        "Secure Coding Practices",
+        "Security Testing and Penetration Testing",
+        "Compliance and Security Standards"
+      ]
+    },
+    {
+      "name": "Algorithms",
+      "subtopics": [
+        "Data Structures and Complexity Analysis",
+        "Search and Sort Algorithms",
+        "Graph Algorithms",
+        "Dynamic Programming",
+        "Algorithm Design Patterns"
+      ]
+    },
+    {
+      "name": "Software Architecture",
+      "subtopics": [
+        "Design Patterns",
+        "Microservices Architecture",
+        "Event-Driven Architecture",
+        "Domain-Driven Design",
+        "System Integration Patterns"
+      ]
+    },
+    {
+      "name": "Development Practices",
+      "subtopics": [
+        "Agile Methodologies",
+        "Test-Driven Development",
+        "Continuous Integration/Continuous Deployment",
+        "Code Review Best Practices",
+        "Version Control Strategies"
+      ]
+    },
+    {
+      "name": "Database Systems",
+      "subtopics": [
+        "Relational Databases",
+        "NoSQL Databases",
+        "Database Design and Normalization",
+        "Query Optimization",
+        "Data Migration Strategies"
+      ]
+    },
+    {
+      "name": "Frontend Development",
+      "subtopics": [
+        "Web Technologies (HTML, CSS, JavaScript)",
+        "Frontend Frameworks (React, Angular, Vue)",
+        "Responsive Design",
+        "Web Performance Optimization",
+        "Progressive Web Apps"
+      ]
+    },
+    {
+      "name": "Backend Development",
+      "subtopics": [
+        "Server-Side Programming",
+        "API Development",
+        "Caching Strategies",
+        "Message Queues",
+        "Background Processing"
+      ]
+    },
+    {
+      "name": "DevOps",
+      "subtopics": [
+        "Infrastructure as Code",
+        "Containerization and Orchestration",
+        "Monitoring and Logging",
+        "Cloud Computing",
+        "Automation Tools"
+      ]
+    },
+    {
+      "name": "Quality Assurance",
+      "subtopics": [
+        "Testing Methodologies",
+        "Test Automation",
+        "Performance Testing",
+        "Security Testing",
+        "Quality Metrics and KPIs"
+      ]
+    }
+  ]
+} 
