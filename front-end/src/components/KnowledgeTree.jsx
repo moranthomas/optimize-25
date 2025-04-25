@@ -220,20 +220,30 @@ const KnowledgeTree = () => {
                 throw new Error('Failed to populate content');
             }
             
-            // Refresh the entire tree structure
+            // Clear all state to force a complete refresh
+            setRootNodes([]);
+            setChildNodes({});
+            setExpandedBranches(new Set());
+            setSelectedSubtopic(null);
+            
+            // Fetch fresh data
             const nodes = await knowledgeTreeService.getRootNodes();
             setRootNodes(nodes);
             
-            // Clear the child nodes cache to force a refresh
-            setChildNodes({});
-            
-            // If the current node was expanded, reload its children
-            if (selectedSubtopic && expandedBranches.has(selectedSubtopic.id)) {
-                const children = await knowledgeTreeService.getChildren(selectedSubtopic.id);
+            // If the original node was a root node, expand it and load its children
+            const originalNode = nodes.find(n => n.name === selectedSubtopic.name);
+            if (originalNode) {
+                const newExpanded = new Set([originalNode.id]);
+                setExpandedBranches(newExpanded);
+                
+                const children = await knowledgeTreeService.getChildren(originalNode.id);
                 setChildNodes(prev => ({
                     ...prev,
-                    [selectedSubtopic.id]: children
+                    [originalNode.id]: children
                 }));
+                
+                // Select the original node again
+                setSelectedSubtopic(originalNode);
             }
         } catch (error) {
             console.error('Error populating content:', error);
@@ -366,7 +376,7 @@ const KnowledgeTree = () => {
                                 disabled={isPopulating}
                                 className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400"
                             >
-                                {isPopulating ? 'Populating...' : `Populate ${selectedSubtopic.name}`}
+                                {isPopulating ? 'Suggesting...' : 'Suggest'}
                             </button>
                         )}
                         {!hasChildren && (
