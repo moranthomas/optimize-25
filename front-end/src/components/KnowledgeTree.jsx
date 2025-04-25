@@ -737,7 +737,7 @@ const KnowledgeTree = () => {
         }
 
         return (
-            <div>
+            <div className="space-y-4">
                 {renderBreadcrumbs()}
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-bold">{selectedSubtopic.name}</h2>

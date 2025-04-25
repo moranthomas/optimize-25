@@ -1,12 +1,14 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import KnowledgeTree from './components/KnowledgeTree';
+import Evaluate from './components/Evaluate';
 import './App.css'
 
 function Navigation() {
   const location = useLocation();
   const isHome = location.pathname === '/';
   const isKnowledge = location.pathname === '/knowledge';
+  const isEvaluate = location.pathname === '/evaluate';
 
   return (
     <nav className="bg-white shadow-sm">
@@ -37,6 +39,16 @@ function Navigation() {
               >
                 Knowledge Base
               </Link>
+              <Link
+                to="/evaluate"
+                className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
+                  isEvaluate
+                    ? 'border-blue-500 text-gray-900'
+                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                }`}
+              >
+                Evaluate
+              </Link>
             </div>
           </div>
         </div>
@@ -46,6 +58,7 @@ function Navigation() {
 }
 
 function App() {
+  const [activeTab, setActiveTab] = useState('tree');
   const [query, setQuery] = useState('')
   const [answer, setAnswer] = useState('')
   const [error, setError] = useState('')
@@ -54,7 +67,13 @@ function App() {
     try {
       setError('')
       console.log('Sending query:', query)
-      const response = await fetch(`/api/ask?query=${encodeURIComponent(query)}`)
+      const response = await fetch(`/api/chatgpt/ask`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ question: query })
+      })
       console.log('Response status:', response.status)
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
@@ -107,6 +126,7 @@ function App() {
               </div>
             } />
             <Route path="/knowledge" element={<KnowledgeTree />} />
+            <Route path="/evaluate" element={<Evaluate />} />
           </Routes>
         </main>
       </div>
