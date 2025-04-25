@@ -11,12 +11,16 @@ import java.util.stream.Collectors;
 import java.util.ArrayList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import jakarta.persistence.EntityManager;
 
 @Service
 public class KnowledgeTreeService {
 
     private final KnowledgeNodeRepository repository;
     private static final Logger logger = LoggerFactory.getLogger(KnowledgeTreeService.class);
+
+    @Autowired
+    private EntityManager entityManager;
 
     @Autowired
     public KnowledgeTreeService(KnowledgeNodeRepository repository) {
@@ -58,63 +62,128 @@ public class KnowledgeTreeService {
 
     @Transactional
     public KnowledgeNode updateNode(Long id, KnowledgeNode updatedNode) {
-        return repository.findById(id)
-            .map(existingNode -> {
-                // Update basic properties
-                existingNode.setName(updatedNode.getName());
-                existingNode.setDescription(updatedNode.getDescription());
-                existingNode.setContent(updatedNode.getContent());
-                existingNode.setExamples(updatedNode.getExamples());
-                existingNode.setReferences(updatedNode.getReferences());
+        logger.info("Starting update for node {} with new order {}", id, updatedNode.getNodeOrder());
+        
+        KnowledgeNode workingNode = entityManager.find(KnowledgeNode.class, id);
+        if (workingNode == null) {
+            logger.error("Initial node lookup failed - Node not found with id: {}", id);
+            throw new RuntimeException("Node not found with id: " + id);
+        }
+        
+        logger.info("Found node to update: {} (ID: {})", workingNode.getName(), workingNode.getId());
+
+        // Store IDs for parent change handling
+        final Long newParentId = updatedNode.getParent() != null ? updatedNode.getParent().getId() : null;
+        final Long currentParentId = workingNode.getParent() != null ? workingNode.getParent().getId() : null;
+        final Long nodeId = workingNode.getId();
+        
+        // Update basic properties if they are provided
+        if (updatedNode.getName() != null) workingNode.setName(updatedNode.getName());
+        if (updatedNode.getDescription() != null) workingNode.setDescription(updatedNode.getDescription());
+        if (updatedNode.getContent() != null) workingNode.setContent(updatedNode.getContent());
+        if (updatedNode.getExamples() != null) workingNode.setExamples(updatedNode.getExamples());
+        if (updatedNode.getReferences() != null) workingNode.setReferences(updatedNode.getReferences());
+        
+        // Save basic property updates
+        workingNode = entityManager.merge(workingNode);
+        entityManager.flush();
+        
+        // Check if this is a parent change operation
+        boolean isParentChange = updatedNode.getParent() != null && 
+            ((newParentId == null && currentParentId != null) || 
+             (newParentId != null && !newParentId.equals(currentParentId)));
+        
+        // Handle parent change if needed
+        if (isParentChange) {
+            logger.info("Parent is changing for node {} (Current: {}, New: {})", 
+                nodeId, currentParentId, newParentId);
+
+            // First, handle the old parent relationship
+            if (currentParentId != null) {
+                KnowledgeNode oldParent = entityManager.find(KnowledgeNode.class, currentParentId);
+                if (oldParent != null) {
+                    oldParent.getChildren().removeIf(child -> child.getId().equals(nodeId));
+                    entityManager.merge(oldParent);
+                    entityManager.flush();
+                    
+                    // Reorder siblings in old parent
+                    List<KnowledgeNode> oldSiblings = repository.findByParentId(currentParentId);
+                    for (int i = 0; i < oldSiblings.size(); i++) {
+                        oldSiblings.get(i).setNodeOrder(i);
+                    }
+                    repository.saveAll(oldSiblings);
+                }
+            }
+
+            // Then handle the new parent relationship
+            if (newParentId != null) {
+                KnowledgeNode newParent = entityManager.find(KnowledgeNode.class, newParentId);
+                if (newParent == null) {
+                    throw new RuntimeException("New parent node not found: " + newParentId);
+                }
+                workingNode.setParent(newParent);
+                workingNode.setLevel(newParent.getLevel() + 1);
                 
-                // Handle parent change and reordering
-                if (updatedNode.getParent() != null) {
-                    KnowledgeNode newParent = repository.findById(updatedNode.getParent().getId())
-                        .orElseThrow(() -> new RuntimeException("Parent node not found"));
-                    
-                    // If parent has changed
-                    if (existingNode.getParent() == null || 
-                        !existingNode.getParent().getId().equals(newParent.getId())) {
-                        // Remove from old parent if it exists
-                        if (existingNode.getParent() != null) {
-                            existingNode.getParent().getChildren().remove(existingNode);
-                        }
-                        // Set new parent
-                        existingNode.setParent(newParent);
-                        existingNode.setLevel(newParent.getLevel() + 1);
-                    }
-                } else if (updatedNode.getParent() == null && existingNode.getParent() != null) {
-                    // Node is being moved to root level
-                    existingNode.getParent().getChildren().remove(existingNode);
-                    existingNode.setParent(null);
-                    existingNode.setLevel(0);
+                // Add to new parent's children
+                if (!newParent.getChildren().contains(workingNode)) {
+                    newParent.addChild(workingNode);
                 }
+                entityManager.merge(newParent);
+            } else {
+                workingNode.setParent(null);
+                workingNode.setLevel(0);
+            }
+            
+            workingNode = entityManager.merge(workingNode);
+            entityManager.flush();
+        }
 
-                // Update node order
-                if (updatedNode.getNodeOrder() != null) {
-                    existingNode.setNodeOrder(updatedNode.getNodeOrder());
-                    // Reorder siblings
-                    List<KnowledgeNode> siblings;
-                    if (existingNode.getParent() != null) {
-                        siblings = repository.findByParentId(existingNode.getParent().getId());
-                    } else {
-                        siblings = repository.findByParentIsNull();
-                    }
-                    
-                    // Remove the current node from the list
-                    siblings.remove(existingNode);
-                    // Insert it at the new position
-                    siblings.add(updatedNode.getNodeOrder(), existingNode);
-                    // Update all sibling orders
-                    for (int i = 0; i < siblings.size(); i++) {
-                        siblings.get(i).setNodeOrder(i);
-                    }
-                    repository.saveAll(siblings);
+        // Handle reordering if needed
+        if (updatedNode.getNodeOrder() != null) {
+            logger.info("Reordering node {} to position {} within same parent", nodeId, updatedNode.getNodeOrder());
+            
+            // Get current siblings (including the working node)
+            List<KnowledgeNode> siblings;
+            if (workingNode.getParent() != null) {
+                siblings = repository.findByParentId(workingNode.getParent().getId());
+            } else {
+                siblings = repository.findByParentIsNull();
+            }
+            
+            // Find current position of working node
+            int currentPosition = -1;
+            for (int i = 0; i < siblings.size(); i++) {
+                if (siblings.get(i).getId().equals(nodeId)) {
+                    currentPosition = i;
+                    break;
                 }
+            }
+            
+            if (currentPosition != -1) {
+                // Remove from current position
+                KnowledgeNode nodeToMove = siblings.remove(currentPosition);
+                
+                // Insert at new position
+                int targetPosition = Math.min(updatedNode.getNodeOrder(), siblings.size());
+                siblings.add(targetPosition, nodeToMove);
+                
+                // Update all node orders
+                for (int i = 0; i < siblings.size(); i++) {
+                    siblings.get(i).setNodeOrder(i);
+                }
+                
+                repository.saveAll(siblings);
+                entityManager.flush();
+            }
+        }
 
-                return repository.save(existingNode);
-            })
-            .orElseThrow(() -> new RuntimeException("Node not found with id: " + id));
+        // Final verification and return
+        entityManager.clear();
+        KnowledgeNode result = entityManager.find(KnowledgeNode.class, nodeId);
+        if (result == null) {
+            throw new RuntimeException("Node not found after update: " + nodeId);
+        }
+        return result;
     }
 
     @Transactional

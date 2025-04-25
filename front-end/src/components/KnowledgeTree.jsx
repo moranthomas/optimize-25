@@ -403,54 +403,114 @@ const KnowledgeTree = () => {
     const handleDragEnd = async (result) => {
         const { source, destination } = result;
 
-        // Dropped outside the list
-        if (!destination) {
+        // Dropped outside the list or dropped in same position
+        if (!destination || 
+            (source.droppableId === destination.droppableId && 
+             source.index === destination.index)) {
             return;
         }
 
-        // Get the source and destination node IDs from the draggableId and destination.droppableId
-        const draggedNodeId = parseInt(result.draggableId);
-        const newParentId = destination.droppableId === 'root' ? null : parseInt(destination.droppableId);
-        const newOrder = destination.index;
-
         try {
-            // Find the dragged node
-            let draggedNode = null;
-            if (source.droppableId === 'root') {
-                draggedNode = rootNodes.find(n => n.id === draggedNodeId);
-            } else {
-                draggedNode = childNodes[source.droppableId]?.find(n => n.id === draggedNodeId);
+            setError(null);
+
+            // Get the source parent node ID
+            const sourceParentId = source.droppableId === 'root' ? null : parseInt(source.droppableId);
+            const destinationParentId = destination.droppableId === 'root' ? null : parseInt(destination.droppableId);
+
+            // Get the source nodes array
+            const sourceNodes = sourceParentId === null ? rootNodes : childNodes[sourceParentId] || [];
+            
+            // Get the dragged node
+            const draggedNode = sourceNodes[source.index];
+            if (!draggedNode) {
+                console.error('Could not find dragged node');
+                return;
             }
 
-            if (!draggedNode) return;
+            // If trying to drop a node into itself or its descendants, prevent it
+            if (destinationParentId === draggedNode.id) {
+                console.error('Cannot drop a node into itself');
+                return;
+            }
 
-            // Create updated node with new parent and order
-            const updatedNode = {
-                ...draggedNode,
-                parent: newParentId ? { id: newParentId } : null,
-                nodeOrder: newOrder
-            };
+            // Create a copy of the node arrays we'll be modifying
+            let updatedSourceNodes = [...sourceNodes];
+            let updatedDestinationNodes = destinationParentId === sourceParentId 
+                ? updatedSourceNodes 
+                : [...(destinationParentId === null ? rootNodes : (childNodes[destinationParentId] || []))];
 
-            // Update the node in the backend
-            await knowledgeTreeService.updateNode(draggedNodeId, updatedNode);
+            // Remove the node from its source position
+            updatedSourceNodes = updatedSourceNodes.filter(node => node.id !== draggedNode.id);
 
-            // Refresh the tree to show the new structure
+            // If moving to a different parent
+            if (sourceParentId !== destinationParentId) {
+                const updatedNode = {
+                    ...draggedNode,
+                    parent: destinationParentId ? { id: destinationParentId } : null,
+                    parentId: destinationParentId,
+                    nodeOrder: destination.index
+                };
+                
+                // Update in backend
+                await knowledgeTreeService.updateNode(draggedNode.id, updatedNode);
+                
+                // Update source parent's children orders
+                for (let i = 0; i < updatedSourceNodes.length; i++) {
+                    const node = updatedSourceNodes[i];
+                    await knowledgeTreeService.updateNode(node.id, { nodeOrder: i });
+                }
+            } else {
+                // Just reordering within the same parent
+                updatedDestinationNodes.splice(destination.index, 0, draggedNode);
+                
+                // Update all node orders in the destination parent
+                for (let i = 0; i < updatedDestinationNodes.length; i++) {
+                    const node = updatedDestinationNodes[i];
+                    // Only send nodeOrder for reordering within same parent
+                    await knowledgeTreeService.updateNode(node.id, { nodeOrder: i });
+                }
+            }
+
+            // Refresh the entire tree
             const freshRootNodes = await knowledgeTreeService.getRootNodes();
             setRootNodes(freshRootNodes);
             setChildNodes({});
-            
-            // Re-expand branches that were previously expanded
+
+            // Re-fetch children for all expanded branches
             const expandedArray = Array.from(expandedBranches);
             for (const branchId of expandedArray) {
                 const children = await knowledgeTreeService.getChildren(branchId);
-                setChildNodes(prev => ({
-                    ...prev,
-                    [branchId]: children
-                }));
+                if (children && children.length > 0) {
+                    setChildNodes(prev => ({
+                        ...prev,
+                        [branchId]: children
+                    }));
+                }
             }
+
         } catch (error) {
             console.error('Error updating node position:', error);
             setError('Failed to update node position');
+            
+            // Refresh the tree to ensure consistent state
+            try {
+                const freshRootNodes = await knowledgeTreeService.getRootNodes();
+                setRootNodes(freshRootNodes);
+                setChildNodes({});
+                
+                const expandedArray = Array.from(expandedBranches);
+                for (const branchId of expandedArray) {
+                    const children = await knowledgeTreeService.getChildren(branchId);
+                    if (children && children.length > 0) {
+                        setChildNodes(prev => ({
+                            ...prev,
+                            [branchId]: children
+                        }));
+                    }
+                }
+            } catch (refreshError) {
+                console.error('Error refreshing tree:', refreshError);
+            }
         }
     };
 
@@ -479,7 +539,27 @@ const KnowledgeTree = () => {
         }
     };
 
-    const renderBranch = (node, level = 0) => {
+    const renderTree = () => (
+        <DragDropContext onDragEnd={handleDragEnd}>
+            <Droppable 
+                droppableId="root"
+                type="node"
+            >
+                {(provided) => (
+                    <div 
+                        ref={provided.innerRef}
+                        {...provided.droppableProps}
+                        className="space-y-1"
+                    >
+                        {rootNodes.map((node, index) => renderBranch(node, 0, index))}
+                        {provided.placeholder}
+                    </div>
+                )}
+            </Droppable>
+        </DragDropContext>
+    );
+
+    const renderBranch = (node, level = 0, index) => {
         const isExpanded = expandedBranches.has(node.id);
         const children = isExpanded ? childNodes[node.id] || [] : [];
         const hasChildren = node.childIds && node.childIds.length > 0;
@@ -487,13 +567,21 @@ const KnowledgeTree = () => {
         const rootColorClass = isRootNode ? getRootNodeColor(node.name) : '';
 
         return (
-            <Draggable key={node.id} draggableId={node.id.toString()} index={node.nodeOrder || 0}>
+            <Draggable 
+                key={node.id} 
+                draggableId={String(node.id)}
+                index={index}
+            >
                 {(provided, snapshot) => (
                     <div
                         ref={provided.innerRef}
                         {...provided.draggableProps}
                         {...provided.dragHandleProps}
-                        className={`ml-${level * 4} ${isRootNode ? 'mb-2' : ''}`}
+                        style={{
+                            ...provided.draggableProps.style,
+                            marginLeft: `${level * 1}rem`
+                        }}
+                        className={`${isRootNode ? 'mb-2' : ''}`}
                     >
                         <div 
                             className={`
@@ -522,15 +610,20 @@ const KnowledgeTree = () => {
                                 {node.name}
                             </span>
                         </div>
-                        {isExpanded && (
-                            <Droppable droppableId={node.id.toString()}>
+                        {isExpanded && children.length > 0 && (
+                            <Droppable 
+                                droppableId={String(node.id)}
+                                type="node"
+                            >
                                 {(provided) => (
                                     <div 
                                         ref={provided.innerRef}
                                         {...provided.droppableProps}
                                         className="ml-4 border-l-2 border-gray-200 pl-2"
                                     >
-                                        {children.map(child => renderBranch(child, level + 1))}
+                                        {children.map((child, childIndex) => 
+                                            renderBranch(child, level + 1, childIndex)
+                                        )}
                                         {provided.placeholder}
                                     </div>
                                 )}
@@ -720,20 +813,7 @@ const KnowledgeTree = () => {
                     onChange={handleSearch}
                     className="w-full p-2 border rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <DragDropContext onDragEnd={handleDragEnd}>
-                    <Droppable droppableId="root">
-                        {(provided) => (
-                            <div 
-                                ref={provided.innerRef}
-                                {...provided.droppableProps}
-                                className="space-y-1"
-                            >
-                                {rootNodes.map(node => renderBranch(node))}
-                                {provided.placeholder}
-                            </div>
-                        )}
-                    </Droppable>
-                </DragDropContext>
+                {renderTree()}
             </div>
             <div className="w-2/3 p-4 overflow-y-auto">
                 {renderContent()}

@@ -2,7 +2,10 @@ package com.optimize25.backend.controller;
 
 import com.optimize25.backend.model.KnowledgeNode;
 import com.optimize25.backend.service.KnowledgeTreeService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
@@ -14,6 +17,7 @@ import java.util.Optional;
 public class KnowledgeTreeController {
 
     private final KnowledgeTreeService knowledgeTreeService;
+    private static final Logger logger = LoggerFactory.getLogger(KnowledgeTreeController.class);
 
     @Autowired
     public KnowledgeTreeController(KnowledgeTreeService knowledgeTreeService) {
@@ -82,14 +86,17 @@ public class KnowledgeTreeController {
     @PutMapping("/{id}")
     public ResponseEntity<KnowledgeNode> updateNode(@PathVariable Long id, @RequestBody KnowledgeNode node) {
         try {
+            logger.info("Updating node with ID: {}", id);
             KnowledgeNode updatedNode = knowledgeTreeService.updateNode(id, node);
             // Ensure children are loaded for the updated node
             if (updatedNode.getChildren() != null) {
                 updatedNode.getChildren().size(); // Force lazy loading
             }
+            logger.info("Successfully updated node: {}", updatedNode.getName());
             return ResponseEntity.ok(updatedNode);
         } catch (RuntimeException e) {
-            return ResponseEntity.notFound().build();
+            logger.error("Error updating node: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
