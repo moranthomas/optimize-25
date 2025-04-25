@@ -94,6 +94,35 @@ const KnowledgeTree = () => {
                 setError('Failed to load children');
             }
         }
+
+        // Expand only the path to the selected node
+        const newExpanded = new Set();
+        let currentNode = node;
+        
+        // Traverse up the tree to find all parent nodes
+        while (currentNode && currentNode.parentId) {
+            // Find the parent node in either rootNodes or childNodes
+            let parentNode = rootNodes.find(n => n.id === currentNode.parentId);
+            if (!parentNode) {
+                // Search in childNodes
+                for (const parentId in childNodes) {
+                    const found = childNodes[parentId].find(n => n.id === currentNode.parentId);
+                    if (found) {
+                        parentNode = found;
+                        break;
+                    }
+                }
+            }
+            
+            if (parentNode) {
+                newExpanded.add(parentNode.id);
+                currentNode = parentNode;
+            } else {
+                break; // Stop if we can't find a parent
+            }
+        }
+        
+        setExpandedBranches(newExpanded);
     };
 
     const handleSearch = async (e) => {
