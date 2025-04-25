@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { knowledgeTreeService } from '../services/knowledgeTreeService';
+import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 
 const KnowledgeTree = () => {
     const [expandedBranches, setExpandedBranches] = useState(new Set());
@@ -61,10 +62,15 @@ const KnowledgeTree = () => {
                 try {
                     console.log('Fetching children for branch:', branchId);
                     const children = await knowledgeTreeService.getChildren(branchId);
-                    console.log('Children received:', children);
+                    // Set parentId for each child
+                    const childrenWithParent = children.map(child => ({
+                        ...child,
+                        parentId: branchId
+                    }));
+                    console.log('Children received with parent IDs:', childrenWithParent);
                     setChildNodes(prev => ({
                         ...prev,
-                        [branchId]: children
+                        [branchId]: childrenWithParent
                     }));
                 } catch (err) {
                     console.error('Error fetching children:', err);
@@ -85,10 +91,15 @@ const KnowledgeTree = () => {
             try {
                 console.log('Fetching children for branch:', node.id);
                 const children = await knowledgeTreeService.getChildren(node.id);
-                console.log('Children received:', children);
+                // Set parentId for each child
+                const childrenWithParent = children.map(child => ({
+                    ...child,
+                    parentId: node.id
+                }));
+                console.log('Children received with parent IDs:', childrenWithParent);
                 setChildNodes(prev => ({
                     ...prev,
-                    [node.id]: children
+                    [node.id]: childrenWithParent
                 }));
             } catch (err) {
                 console.error('Error fetching children:', err);
@@ -253,36 +264,281 @@ const KnowledgeTree = () => {
         }
     };
 
+    const getNodePath = (node) => {
+        const path = [];
+        let currentNode = node;
+        
+        console.log('Starting path building for node:', {
+            id: node.id,
+            name: node.name,
+            parentId: node.parentId
+        });
+        
+        // Helper function to find a node by ID in the entire tree
+        const findNodeById = (id) => {
+            console.log('Searching for node with ID:', id);
+            
+            // Check root nodes first
+            let found = rootNodes.find(n => n.id === id);
+            if (found) {
+                console.log('Found in root nodes:', found.name);
+                return found;
+            }
+            
+            // Then check all loaded child nodes
+            for (const parentId in childNodes) {
+                found = childNodes[parentId].find(n => n.id === id);
+                if (found) {
+                    console.log('Found in child nodes:', found.name, 'under parent:', parentId);
+                    return found;
+                }
+            }
+            
+            console.log('Node not found with ID:', id);
+            return null;
+        };
+        
+        // Build the path from current node up to root
+        while (currentNode) {
+            console.log('Adding to path:', {
+                id: currentNode.id,
+                name: currentNode.name,
+                parentId: currentNode.parentId
+            });
+            
+            path.unshift(currentNode);
+            
+            if (currentNode.parentId) {
+                const parentNode = findNodeById(currentNode.parentId);
+                if (!parentNode) {
+                    console.log('Could not find parent node, stopping path building');
+                    break;
+                }
+                currentNode = parentNode;
+            } else {
+                console.log('Reached root node, stopping path building');
+                currentNode = null;
+            }
+        }
+        
+        console.log('Final path:', path.map(n => n.name));
+        return path;
+    };
+
+    const renderBreadcrumbs = () => {
+        if (!selectedSubtopic) return null;
+        
+        const path = getNodePath(selectedSubtopic);
+        
+        if (path.length === 0) {
+            console.log('No path found for node:', selectedSubtopic.name);
+            return null;
+        }
+        
+        return (
+            <div className="flex items-center space-x-2 text-sm text-gray-600 mb-4">
+                {path.map((node, index) => (
+                    <React.Fragment key={node.id}>
+                        <span 
+                            className="cursor-pointer hover:text-blue-600"
+                            onClick={() => handleSubtopicClick(node)}
+                        >
+                            {node.name}
+                        </span>
+                        {index < path.length - 1 && (
+                            <span className="text-gray-400">/</span>
+                        )}
+                    </React.Fragment>
+                ))}
+            </div>
+        );
+    };
+
+    const getRootNodeColor = (nodeName) => {
+        const colors = {
+            // Physical Health
+            'Optimize Physical': 'bg-blue-50 text-blue-800 border-blue-200',
+            'Productivity': 'bg-sky-50 text-sky-800 border-sky-200',
+            'Career': 'bg-cyan-50 text-cyan-800 border-cyan-200',
+            'Optimize Productivity': 'bg-sky-50 text-sky-800 border-sky-200',
+            
+            // Emotional Health
+            'Optimize Emotional': 'bg-purple-50 text-purple-800 border-purple-200',
+            'Relationships': 'bg-fuchsia-50 text-fuchsia-800 border-fuchsia-200',
+            'Family': 'bg-violet-50 text-violet-800 border-violet-200',
+            
+            // Mental Health
+            'Optimize Mental': 'bg-green-50 text-green-800 border-green-200',
+            'Learning': 'bg-emerald-50 text-emerald-800 border-emerald-200',
+            'Creativity': 'bg-lime-50 text-lime-800 border-lime-200',
+            'Core Learning Modules': 'bg-emerald-50 text-emerald-800 border-emerald-200',
+            'School': 'bg-lime-50 text-lime-800 border-lime-200',
+            
+            // Spiritual Health
+            'Optimize Spiritual': 'bg-teal-50 text-teal-800 border-teal-200',
+            'Purpose': 'bg-amber-50 text-amber-800 border-amber-200',
+            'Values': 'bg-orange-50 text-orange-800 border-orange-200',
+            'Meditation': 'bg-teal-50 text-teal-800 border-teal-200',
+            'Mindfulness': 'bg-amber-50 text-amber-800 border-amber-200',
+            'Gratitude': 'bg-orange-50 text-orange-800 border-orange-200',
+            
+            // Social Health
+            'Optimize Social': 'bg-pink-50 text-pink-800 border-pink-200',
+            'Community': 'bg-rose-50 text-rose-800 border-rose-200',
+            'Networking': 'bg-red-50 text-red-800 border-red-200',
+            
+            // Financial Health
+            'Optimize Financial': 'bg-yellow-50 text-yellow-800 border-yellow-200',
+            'Wealth': 'bg-violet-50 text-violet-800 border-violet-200',
+            'Investing': 'bg-purple-50 text-purple-800 border-purple-200',
+            'Budgeting': 'bg-yellow-50 text-yellow-800 border-yellow-200',
+            'Saving': 'bg-violet-50 text-violet-800 border-violet-200',
+            'Income': 'bg-purple-50 text-purple-800 border-purple-200',
+            
+            'default': 'bg-gray-50 text-gray-800 border-gray-200'
+        };
+        return colors[nodeName] || colors.default;
+    };
+
+    const handleDragEnd = async (result) => {
+        const { source, destination } = result;
+
+        // Dropped outside the list
+        if (!destination) {
+            return;
+        }
+
+        // Get the source and destination node IDs from the draggableId and destination.droppableId
+        const draggedNodeId = parseInt(result.draggableId);
+        const newParentId = destination.droppableId === 'root' ? null : parseInt(destination.droppableId);
+        const newOrder = destination.index;
+
+        try {
+            // Find the dragged node
+            let draggedNode = null;
+            if (source.droppableId === 'root') {
+                draggedNode = rootNodes.find(n => n.id === draggedNodeId);
+            } else {
+                draggedNode = childNodes[source.droppableId]?.find(n => n.id === draggedNodeId);
+            }
+
+            if (!draggedNode) return;
+
+            // Create updated node with new parent and order
+            const updatedNode = {
+                ...draggedNode,
+                parent: newParentId ? { id: newParentId } : null,
+                nodeOrder: newOrder
+            };
+
+            // Update the node in the backend
+            await knowledgeTreeService.updateNode(draggedNodeId, updatedNode);
+
+            // Refresh the tree to show the new structure
+            const freshRootNodes = await knowledgeTreeService.getRootNodes();
+            setRootNodes(freshRootNodes);
+            setChildNodes({});
+            
+            // Re-expand branches that were previously expanded
+            const expandedArray = Array.from(expandedBranches);
+            for (const branchId of expandedArray) {
+                const children = await knowledgeTreeService.getChildren(branchId);
+                setChildNodes(prev => ({
+                    ...prev,
+                    [branchId]: children
+                }));
+            }
+        } catch (error) {
+            console.error('Error updating node position:', error);
+            setError('Failed to update node position');
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!selectedSubtopic) return;
+        
+        if (window.confirm(`Are you sure you want to delete "${selectedSubtopic.name}" and all its subtopics? This action cannot be undone.`)) {
+            try {
+                await knowledgeTreeService.deleteNode(selectedSubtopic.id);
+                
+                // Clear all state to force a complete refresh
+                setRootNodes([]);
+                setChildNodes({});
+                setExpandedBranches(new Set());
+                setSelectedSubtopic(null);
+                
+                // Fetch fresh data
+                const nodes = await knowledgeTreeService.getRootNodes();
+                setRootNodes(nodes);
+                
+                setError(null);
+            } catch (error) {
+                console.error('Error deleting node:', error);
+                setError('Failed to delete node');
+            }
+        }
+    };
+
     const renderBranch = (node, level = 0) => {
-        console.log('Rendering branch:', node);
         const isExpanded = expandedBranches.has(node.id);
         const children = isExpanded ? childNodes[node.id] || [] : [];
         const hasChildren = node.childIds && node.childIds.length > 0;
-        console.log('Children for node', node.id, ':', children, 'Has children:', hasChildren);
+        const isRootNode = !node.parentId;
+        const rootColorClass = isRootNode ? getRootNodeColor(node.name) : '';
 
         return (
-            <div key={node.id} className="ml-4">
-                <div 
-                    className={`flex items-center py-1 cursor-pointer hover:bg-gray-100 ${
-                        selectedSubtopic?.id === node.id ? 'bg-blue-50' : ''
-                    }`}
-                    onClick={() => handleSubtopicClick(node)}
-                >
-                    {hasChildren && (
-                        <span 
-                            className="mr-2 text-gray-500"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                toggleBranch(node.id);
-                            }}
+            <Draggable key={node.id} draggableId={node.id.toString()} index={node.nodeOrder || 0}>
+                {(provided, snapshot) => (
+                    <div
+                        ref={provided.innerRef}
+                        {...provided.draggableProps}
+                        {...provided.dragHandleProps}
+                        className={`ml-${level * 4} ${isRootNode ? 'mb-2' : ''}`}
+                    >
+                        <div 
+                            className={`
+                                flex items-center py-2 px-3 rounded-lg transition-all duration-200
+                                ${isRootNode ? `${rootColorClass} border-2 font-semibold` : 'hover:bg-gray-100'}
+                                ${selectedSubtopic?.id === node.id ? 'bg-blue-100' : ''}
+                                ${snapshot.isDragging ? 'shadow-lg' : ''}
+                                cursor-pointer
+                            `}
+                            onClick={() => handleSubtopicClick(node)}
                         >
-                            {isExpanded ? '▼' : '▶'}
-                        </span>
-                    )}
-                    <span className="text-gray-800">{node.name}</span>
-                </div>
-                {isExpanded && children.map(child => renderBranch(child, level + 1))}
-            </div>
+                            {hasChildren && (
+                                <span 
+                                    className={`mr-2 transition-transform duration-200 ${
+                                        isExpanded ? 'transform rotate-90' : ''
+                                    }`}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleBranch(node.id);
+                                    }}
+                                >
+                                    ▶
+                                </span>
+                            )}
+                            <span className={`${isRootNode ? 'text-lg' : 'text-base'}`}>
+                                {node.name}
+                            </span>
+                        </div>
+                        {isExpanded && (
+                            <Droppable droppableId={node.id.toString()}>
+                                {(provided) => (
+                                    <div 
+                                        ref={provided.innerRef}
+                                        {...provided.droppableProps}
+                                        className="ml-4 border-l-2 border-gray-200 pl-2"
+                                    >
+                                        {children.map(child => renderBranch(child, level + 1))}
+                                        {provided.placeholder}
+                                    </div>
+                                )}
+                            </Droppable>
+                        )}
+                    </div>
+                )}
+            </Draggable>
         );
     };
 
@@ -297,6 +553,7 @@ const KnowledgeTree = () => {
         if (isEditing) {
             return (
                 <div className="space-y-4">
+                    {renderBreadcrumbs()}
                     <div>
                         <label className="block text-sm font-medium text-gray-700">Name</label>
                         <input
@@ -367,6 +624,7 @@ const KnowledgeTree = () => {
 
         return (
             <div>
+                {renderBreadcrumbs()}
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-bold">{selectedSubtopic.name}</h2>
                     <div className="flex space-x-2">
@@ -387,6 +645,12 @@ const KnowledgeTree = () => {
                                 Edit
                             </button>
                         )}
+                        <button
+                            onClick={handleDelete}
+                            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                        >
+                            Delete
+                        </button>
                     </div>
                 </div>
                 {selectedSubtopic.description && (
@@ -397,7 +661,6 @@ const KnowledgeTree = () => {
                 )}
                 {hasChildren ? (
                     <div className="mb-6">
-                        <h3 className="text-xl font-semibold mb-2">Subtopics</h3>
                         <div className="grid grid-cols-1 gap-2">
                             {children.map(child => (
                                 <div
@@ -449,15 +712,28 @@ const KnowledgeTree = () => {
 
     return (
         <div className="flex h-screen">
-            <div className="w-1/3 border-r p-4 overflow-y-auto">
+            <div className="w-1/3 border-r p-4 overflow-y-auto bg-gray-50">
                 <input
                     type="text"
                     placeholder="Search knowledge tree..."
                     value={searchQuery}
                     onChange={handleSearch}
-                    className="w-full p-2 border rounded mb-4"
+                    className="w-full p-2 border rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                {rootNodes.map(node => renderBranch(node))}
+                <DragDropContext onDragEnd={handleDragEnd}>
+                    <Droppable droppableId="root">
+                        {(provided) => (
+                            <div 
+                                ref={provided.innerRef}
+                                {...provided.droppableProps}
+                                className="space-y-1"
+                            >
+                                {rootNodes.map(node => renderBranch(node))}
+                                {provided.placeholder}
+                            </div>
+                        )}
+                    </Droppable>
+                </DragDropContext>
             </div>
             <div className="w-2/3 p-4 overflow-y-auto">
                 {renderContent()}

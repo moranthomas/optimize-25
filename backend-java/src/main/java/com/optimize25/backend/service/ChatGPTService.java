@@ -169,12 +169,13 @@ public class ChatGPTService {
 
         // Prepare the prompt for ChatGPT
         String prompt = String.format(
-            "Create a comprehensive knowledge tree for %s. " +
-            "Include main categories and subtopics. " +
-            "For each topic, provide a name, description, and detailed content. " +
+            "Create a list of subtopics and content for %s. " +
+            "Do not include %s itself in the response, only its children. " +
+            "For each subtopic, provide a name, description, and detailed content. " +
             "Format the response as a JSON array of objects with the following structure: " +
-            "[{name: string, description: string, content: string, children: [...]}]",
-            nodeName
+            "[{name: string, description: string, content: string, children: [...]}]. " +
+            "Each subtopic should be unique and focused on a specific aspect of %s.",
+            nodeName, nodeName, nodeName
         );
         logger.info("Prepared prompt for ChatGPT");
 
