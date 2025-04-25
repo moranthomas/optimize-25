@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import KnowledgeTree from './components/KnowledgeTree';
 import Evaluate from './components/Evaluate';
+import robotLogo from './assets/Opt25.png';
 import './App.css'
 
 function Navigation() {
@@ -16,6 +17,7 @@ function Navigation() {
         <div className="flex justify-between h-16">
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
+              <img src={robotLogo} alt="OptimizeMe Logo" className="app-logo" />
               <span className="text-xl font-bold text-gray-900">Optimize Me</span>
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
