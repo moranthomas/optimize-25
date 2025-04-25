@@ -17,6 +17,7 @@ const KnowledgeTree = () => {
         examples: '',
         references: ''
     });
+    const [isPopulating, setIsPopulating] = useState(false);
 
     useEffect(() => {
         const fetchRootNodes = async () => {
@@ -95,8 +96,8 @@ const KnowledgeTree = () => {
             }
         }
 
-        // Expand only the path to the selected node
-        const newExpanded = new Set();
+        // Create a new set that includes both existing expanded branches and the path to the selected node
+        const newExpanded = new Set(expandedBranches);
         let currentNode = node;
         
         // Traverse up the tree to find all parent nodes
@@ -201,6 +202,45 @@ const KnowledgeTree = () => {
             examples: selectedSubtopic.examples || '',
             references: selectedSubtopic.references || ''
         });
+    };
+
+    const handlePopulate = async () => {
+        setIsPopulating(true);
+        try {
+            // Properly encode the node name for the URL
+            const encodedNodeName = encodeURIComponent(selectedSubtopic.name);
+            const response = await fetch(`http://localhost:8080/api/chatgpt/populate/${encodedNodeName}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to populate content');
+            }
+            
+            // Refresh the entire tree structure
+            const nodes = await knowledgeTreeService.getRootNodes();
+            setRootNodes(nodes);
+            
+            // Clear the child nodes cache to force a refresh
+            setChildNodes({});
+            
+            // If the current node was expanded, reload its children
+            if (selectedSubtopic && expandedBranches.has(selectedSubtopic.id)) {
+                const children = await knowledgeTreeService.getChildren(selectedSubtopic.id);
+                setChildNodes(prev => ({
+                    ...prev,
+                    [selectedSubtopic.id]: children
+                }));
+            }
+        } catch (error) {
+            console.error('Error populating content:', error);
+            setError('Failed to populate content');
+        } finally {
+            setIsPopulating(false);
+        }
     };
 
     const renderBranch = (node, level = 0) => {
@@ -319,14 +359,25 @@ const KnowledgeTree = () => {
             <div>
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-bold">{selectedSubtopic.name}</h2>
-                    {!hasChildren && (
-                        <button
-                            onClick={handleEditClick}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                        >
-                            Edit
-                        </button>
-                    )}
+                    <div className="flex space-x-2">
+                        {!hasChildren && (
+                            <button
+                                onClick={handlePopulate}
+                                disabled={isPopulating}
+                                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400"
+                            >
+                                {isPopulating ? 'Populating...' : `Populate ${selectedSubtopic.name}`}
+                            </button>
+                        )}
+                        {!hasChildren && (
+                            <button
+                                onClick={handleEditClick}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                            >
+                                Edit
+                            </button>
+                        )}
+                    </div>
                 </div>
                 {selectedSubtopic.description && (
                     <div className="mb-6">

@@ -4,69 +4,75 @@ import com.optimize25.backend.model.KnowledgeNode;
 import com.optimize25.backend.repository.KnowledgeNodeRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
 public class KnowledgeTreeService {
+
+    private final KnowledgeNodeRepository repository;
+
     @Autowired
-    private KnowledgeNodeRepository repository;
+    public KnowledgeTreeService(KnowledgeNodeRepository repository) {
+        this.repository = repository;
+    }
 
     public List<KnowledgeNode> getRootNodes() {
-        List<KnowledgeNode> roots = repository.findByLevel(0);
-        roots.forEach(this::populateChildIds);
-        return roots;
+        return repository.findByParentIsNull();
     }
 
     public List<KnowledgeNode> getChildren(Long parentId) {
-        List<KnowledgeNode> children = repository.findByParentId(parentId);
-        children.forEach(this::populateChildIds);
-        return children;
-    }
-
-    private void populateChildIds(KnowledgeNode node) {
-        List<Long> childIds = repository.findByParentId(node.getId())
-            .stream()
-            .map(KnowledgeNode::getId)
-            .collect(Collectors.toList());
-        node.setChildIds(childIds);
-    }
-
-    public KnowledgeNode createNode(KnowledgeNode node) {
-        KnowledgeNode savedNode = repository.save(node);
-        populateChildIds(savedNode);
-        return savedNode;
-    }
-
-    public KnowledgeNode updateNode(Long id, KnowledgeNode node) {
-        Optional<KnowledgeNode> existingNode = repository.findById(id);
-        if (existingNode.isPresent()) {
-            node.setId(id);
-            KnowledgeNode savedNode = repository.save(node);
-            populateChildIds(savedNode);
-            return savedNode;
-        }
-        return null;
-    }
-
-    public void deleteNode(Long id) {
-        repository.deleteById(id);
+        return repository.findByParentId(parentId);
     }
 
     public List<KnowledgeNode> searchNodes(String query) {
-        List<KnowledgeNode> nodes = repository.findByNameContainingIgnoreCase(query);
-        nodes.forEach(this::populateChildIds);
-        return nodes;
+        return repository.findByNameContainingIgnoreCase(query);
     }
 
-    public KnowledgeNode getNode(Long id) {
-        Optional<KnowledgeNode> node = repository.findById(id);
-        if (node.isPresent()) {
-            KnowledgeNode foundNode = node.get();
-            populateChildIds(foundNode);
-            return foundNode;
+    public Optional<KnowledgeNode> getNode(Long id) {
+        return repository.findById(id);
+    }
+
+    @Transactional
+    public KnowledgeNode createNode(KnowledgeNode node) {
+        if (node.getParent() != null) {
+            // Set the level based on parent's level
+            node.setLevel(node.getParent().getLevel() + 1);
+            // Set the node order
+            node.setNodeOrder((int) (repository.countByParent(node.getParent()) + 1));
+            // Add the node to parent's children
+            node.getParent().addChild(node);
+        } else {
+            // Root node
+            node.setLevel(0);
+            node.setNodeOrder((int) (repository.countByParent(null) + 1));
         }
-        return null;
+        return repository.save(node);
+    }
+
+    @Transactional
+    public KnowledgeNode updateNode(Long id, KnowledgeNode updatedNode) {
+        return repository.findById(id)
+            .map(existingNode -> {
+                existingNode.setName(updatedNode.getName());
+                existingNode.setDescription(updatedNode.getDescription());
+                existingNode.setContent(updatedNode.getContent());
+                existingNode.setExamples(updatedNode.getExamples());
+                existingNode.setReferences(updatedNode.getReferences());
+                return repository.save(existingNode);
+            })
+            .orElseThrow(() -> new RuntimeException("Node not found with id: " + id));
+    }
+
+    @Transactional
+    public void deleteNode(Long id) {
+        repository.findById(id).ifPresent(node -> {
+            if (node.getParent() != null) {
+                node.getParent().getChildren().remove(node);
+            }
+            repository.delete(node);
+        });
     }
 } 

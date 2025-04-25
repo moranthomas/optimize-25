@@ -1,7 +1,10 @@
 package com.optimize25.backend.model;
 
 import jakarta.persistence.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Entity
 @Table(name = "knowledge_nodes", schema = "public")
@@ -16,8 +19,13 @@ public class KnowledgeNode {
     @Column(columnDefinition = "TEXT")
     private String description;
     
-    @Column(name = "parent_id")
-    private Long parentId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "parent_id")
+    @JsonIgnore
+    private KnowledgeNode parent;
+
+    @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<KnowledgeNode> children = new ArrayList<>();
     
     @Column(columnDefinition = "TEXT")
     private String content;
@@ -62,12 +70,23 @@ public class KnowledgeNode {
         this.description = description;
     }
 
-    public Long getParentId() {
-        return parentId;
+    public KnowledgeNode getParent() {
+        return parent;
     }
 
-    public void setParentId(Long parentId) {
-        this.parentId = parentId;
+    public void setParent(KnowledgeNode parent) {
+        this.parent = parent;
+        if (parent != null && !parent.getChildren().contains(this)) {
+            parent.getChildren().add(this);
+        }
+    }
+
+    public List<KnowledgeNode> getChildren() {
+        return children;
+    }
+
+    public void setChildren(List<KnowledgeNode> children) {
+        this.children = children;
     }
 
     public String getContent() {
@@ -111,10 +130,21 @@ public class KnowledgeNode {
     }
 
     public List<Long> getChildIds() {
+        if (childIds == null) {
+            childIds = children.stream()
+                .map(KnowledgeNode::getId)
+                .collect(Collectors.toList());
+        }
         return childIds;
     }
 
     public void setChildIds(List<Long> childIds) {
         this.childIds = childIds;
+    }
+
+    // Helper method to manage bidirectional relationship
+    public void addChild(KnowledgeNode child) {
+        children.add(child);
+        child.setParent(this);
     }
 } 
