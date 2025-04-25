@@ -74,10 +74,26 @@ const KnowledgeTree = () => {
         setExpandedBranches(newExpanded);
     };
 
-    const handleSubtopicClick = (node) => {
+    const handleSubtopicClick = async (node) => {
         console.log('Selected node:', node);
         setSelectedSubtopic(node);
         setIsEditing(false);
+
+        // Load children if this is a branch node
+        if (node.childIds && node.childIds.length > 0 && !childNodes[node.id]) {
+            try {
+                console.log('Fetching children for branch:', node.id);
+                const children = await knowledgeTreeService.getChildren(node.id);
+                console.log('Children received:', children);
+                setChildNodes(prev => ({
+                    ...prev,
+                    [node.id]: children
+                }));
+            } catch (err) {
+                console.error('Error fetching children:', err);
+                setError('Failed to load children');
+            }
+        }
     };
 
     const handleSearch = async (e) => {
@@ -196,6 +212,9 @@ const KnowledgeTree = () => {
             return <div className="text-gray-500">Select a topic to view its content</div>;
         }
 
+        const hasChildren = selectedSubtopic.childIds && selectedSubtopic.childIds.length > 0;
+        const children = hasChildren ? childNodes[selectedSubtopic.id] || [] : [];
+
         if (isEditing) {
             return (
                 <div className="space-y-4">
@@ -271,12 +290,14 @@ const KnowledgeTree = () => {
             <div>
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-bold">{selectedSubtopic.name}</h2>
-                    <button
-                        onClick={handleEditClick}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                    >
-                        Edit
-                    </button>
+                    {!hasChildren && (
+                        <button
+                            onClick={handleEditClick}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                        >
+                            Edit
+                        </button>
+                    )}
                 </div>
                 {selectedSubtopic.description && (
                     <div className="mb-6">
@@ -284,23 +305,45 @@ const KnowledgeTree = () => {
                         <p className="text-gray-700">{selectedSubtopic.description}</p>
                     </div>
                 )}
-                {selectedSubtopic.content && (
+                {hasChildren ? (
                     <div className="mb-6">
-                        <h3 className="text-xl font-semibold mb-2">Content</h3>
-                        <p className="text-gray-700">{selectedSubtopic.content}</p>
+                        <h3 className="text-xl font-semibold mb-2">Subtopics</h3>
+                        <div className="grid grid-cols-1 gap-2">
+                            {children.map(child => (
+                                <div
+                                    key={child.id}
+                                    className="p-3 border rounded-lg hover:bg-gray-50 cursor-pointer"
+                                    onClick={() => handleSubtopicClick(child)}
+                                >
+                                    <h4 className="text-lg font-medium text-blue-600">{child.name}</h4>
+                                    {child.description && (
+                                        <p className="text-sm text-gray-600 mt-1">{child.description}</p>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                )}
-                {selectedSubtopic.examples && (
-                    <div className="mb-6">
-                        <h3 className="text-xl font-semibold mb-2">Examples</h3>
-                        <p className="text-gray-700">{selectedSubtopic.examples}</p>
-                    </div>
-                )}
-                {selectedSubtopic.references && (
-                    <div className="mb-6">
-                        <h3 className="text-xl font-semibold mb-2">References</h3>
-                        <p className="text-gray-700">{selectedSubtopic.references}</p>
-                    </div>
+                ) : (
+                    <>
+                        {selectedSubtopic.content && (
+                            <div className="mb-6">
+                                <h3 className="text-xl font-semibold mb-2">Content</h3>
+                                <p className="text-gray-700">{selectedSubtopic.content}</p>
+                            </div>
+                        )}
+                        {selectedSubtopic.examples && (
+                            <div className="mb-6">
+                                <h3 className="text-xl font-semibold mb-2">Examples</h3>
+                                <p className="text-gray-700">{selectedSubtopic.examples}</p>
+                            </div>
+                        )}
+                        {selectedSubtopic.references && (
+                            <div className="mb-6">
+                                <h3 className="text-xl font-semibold mb-2">References</h3>
+                                <p className="text-gray-700">{selectedSubtopic.references}</p>
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
         );
