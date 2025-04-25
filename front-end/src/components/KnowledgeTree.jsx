@@ -412,6 +412,16 @@ const KnowledgeTree = () => {
 
         try {
             setError(null);
+            console.log('Drag operation:', {
+                source: {
+                    droppableId: source.droppableId,
+                    index: source.index
+                },
+                destination: {
+                    droppableId: destination.droppableId,
+                    index: destination.index
+                }
+            });
 
             // Get the source parent node ID
             const sourceParentId = source.droppableId === 'root' ? null : parseInt(source.droppableId);
@@ -427,20 +437,20 @@ const KnowledgeTree = () => {
                 return;
             }
 
+            console.log('Moving node:', {
+                id: draggedNode.id,
+                name: draggedNode.name,
+                fromIndex: source.index,
+                toIndex: destination.index,
+                fromParent: sourceParentId,
+                toParent: destinationParentId
+            });
+
             // If trying to drop a node into itself or its descendants, prevent it
             if (destinationParentId === draggedNode.id) {
                 console.error('Cannot drop a node into itself');
                 return;
             }
-
-            // Create a copy of the node arrays we'll be modifying
-            let updatedSourceNodes = [...sourceNodes];
-            let updatedDestinationNodes = destinationParentId === sourceParentId 
-                ? updatedSourceNodes 
-                : [...(destinationParentId === null ? rootNodes : (childNodes[destinationParentId] || []))];
-
-            // Remove the node from its source position
-            updatedSourceNodes = updatedSourceNodes.filter(node => node.id !== draggedNode.id);
 
             // If moving to a different parent
             if (sourceParentId !== destinationParentId) {
@@ -451,29 +461,33 @@ const KnowledgeTree = () => {
                     nodeOrder: destination.index
                 };
                 
-                // Update in backend
+                console.log('Updating node with new parent:', updatedNode);
                 await knowledgeTreeService.updateNode(draggedNode.id, updatedNode);
-                
-                // Update source parent's children orders
-                for (let i = 0; i < updatedSourceNodes.length; i++) {
-                    const node = updatedSourceNodes[i];
-                    await knowledgeTreeService.updateNode(node.id, { nodeOrder: i });
-                }
             } else {
                 // Just reordering within the same parent
-                updatedDestinationNodes.splice(destination.index, 0, draggedNode);
-                
-                // Update all node orders in the destination parent
-                for (let i = 0; i < updatedDestinationNodes.length; i++) {
-                    const node = updatedDestinationNodes[i];
-                    // Only send nodeOrder for reordering within same parent
-                    await knowledgeTreeService.updateNode(node.id, { nodeOrder: i });
-                }
+                console.log('Reordering within same parent:', {
+                    nodeId: draggedNode.id,
+                    newOrder: destination.index
+                });
+                await knowledgeTreeService.updateNode(draggedNode.id, { 
+                    nodeOrder: destination.index,
+                    parentId: sourceParentId // Ensure parent ID is preserved
+                });
             }
 
-            // Refresh the entire tree
+            // Refresh the tree while maintaining parent relationships
+            console.log('Refreshing tree data...');
             const freshRootNodes = await knowledgeTreeService.getRootNodes();
-            setRootNodes(freshRootNodes);
+            
+            // Process the nodes to ensure parent relationships are maintained
+            const processNodes = (nodes, level = 0) => {
+                return nodes.map(node => ({
+                    ...node,
+                    level: level
+                }));
+            };
+            
+            setRootNodes(processNodes(freshRootNodes));
             setChildNodes({});
 
             // Re-fetch children for all expanded branches
@@ -483,34 +497,41 @@ const KnowledgeTree = () => {
                 if (children && children.length > 0) {
                     setChildNodes(prev => ({
                         ...prev,
-                        [branchId]: children
+                        [branchId]: processNodes(children, 1)
                     }));
+                }
+            }
+
+            // Restore the selected node
+            if (selectedSubtopic) {
+                const findNodeInTree = (nodes) => {
+                    for (const node of nodes) {
+                        if (node.id === selectedSubtopic.id) {
+                            return node;
+                        }
+                    }
+                    return null;
+                };
+
+                let foundNode = findNodeInTree(freshRootNodes);
+                if (!foundNode) {
+                    for (const branchId of expandedArray) {
+                        const children = childNodes[branchId];
+                        if (children) {
+                            foundNode = findNodeInTree(children);
+                            if (foundNode) break;
+                        }
+                    }
+                }
+
+                if (foundNode) {
+                    setSelectedSubtopic(foundNode);
                 }
             }
 
         } catch (error) {
             console.error('Error updating node position:', error);
             setError('Failed to update node position');
-            
-            // Refresh the tree to ensure consistent state
-            try {
-                const freshRootNodes = await knowledgeTreeService.getRootNodes();
-                setRootNodes(freshRootNodes);
-                setChildNodes({});
-                
-                const expandedArray = Array.from(expandedBranches);
-                for (const branchId of expandedArray) {
-                    const children = await knowledgeTreeService.getChildren(branchId);
-                    if (children && children.length > 0) {
-                        setChildNodes(prev => ({
-                            ...prev,
-                            [branchId]: children
-                        }));
-                    }
-                }
-            } catch (refreshError) {
-                console.error('Error refreshing tree:', refreshError);
-            }
         }
     };
 
@@ -563,7 +584,7 @@ const KnowledgeTree = () => {
         const isExpanded = expandedBranches.has(node.id);
         const children = isExpanded ? childNodes[node.id] || [] : [];
         const hasChildren = node.childIds && node.childIds.length > 0;
-        const isRootNode = !node.parentId;
+        const isRootNode = level === 0;
         const rootColorClass = isRootNode ? getRootNodeColor(node.name) : '';
 
         return (

@@ -107,11 +107,7 @@ public class KnowledgeTreeService {
                     entityManager.flush();
                     
                     // Reorder siblings in old parent
-                    List<KnowledgeNode> oldSiblings = repository.findByParentId(currentParentId);
-                    for (int i = 0; i < oldSiblings.size(); i++) {
-                        oldSiblings.get(i).setNodeOrder(i);
-                    }
-                    repository.saveAll(oldSiblings);
+                    reorderSiblings(currentParentId);
                 }
             }
 
@@ -142,7 +138,6 @@ public class KnowledgeTreeService {
         if (updatedNode.getNodeOrder() != null) {
             logger.info("Reordering node {} to position {} within same parent", nodeId, updatedNode.getNodeOrder());
             
-            // Get current siblings (including the working node)
             List<KnowledgeNode> siblings;
             if (workingNode.getParent() != null) {
                 siblings = repository.findByParentId(workingNode.getParent().getId());
@@ -150,31 +145,28 @@ public class KnowledgeTreeService {
                 siblings = repository.findByParentIsNull();
             }
             
-            // Find current position of working node
-            int currentPosition = -1;
+            // Sort siblings by current order
+            siblings.sort((a, b) -> {
+                if (a.getNodeOrder() == null) return -1;
+                if (b.getNodeOrder() == null) return 1;
+                return a.getNodeOrder().compareTo(b.getNodeOrder());
+            });
+            
+            // Remove the node from its current position
+            siblings.removeIf(node -> node.getId().equals(nodeId));
+            
+            // Insert at the new position
+            int targetPosition = Math.min(updatedNode.getNodeOrder(), siblings.size());
+            siblings.add(targetPosition, workingNode);
+            
+            // Update all node orders sequentially
             for (int i = 0; i < siblings.size(); i++) {
-                if (siblings.get(i).getId().equals(nodeId)) {
-                    currentPosition = i;
-                    break;
-                }
+                KnowledgeNode sibling = siblings.get(i);
+                sibling.setNodeOrder(i);
+                entityManager.merge(sibling);
             }
             
-            if (currentPosition != -1) {
-                // Remove from current position
-                KnowledgeNode nodeToMove = siblings.remove(currentPosition);
-                
-                // Insert at new position
-                int targetPosition = Math.min(updatedNode.getNodeOrder(), siblings.size());
-                siblings.add(targetPosition, nodeToMove);
-                
-                // Update all node orders
-                for (int i = 0; i < siblings.size(); i++) {
-                    siblings.get(i).setNodeOrder(i);
-                }
-                
-                repository.saveAll(siblings);
-                entityManager.flush();
-            }
+            entityManager.flush();
         }
 
         // Final verification and return
@@ -184,6 +176,29 @@ public class KnowledgeTreeService {
             throw new RuntimeException("Node not found after update: " + nodeId);
         }
         return result;
+    }
+
+    private void reorderSiblings(Long parentId) {
+        List<KnowledgeNode> siblings;
+        if (parentId != null) {
+            siblings = repository.findByParentId(parentId);
+        } else {
+            siblings = repository.findByParentIsNull();
+        }
+        
+        // Sort by current order
+        siblings.sort((a, b) -> {
+            if (a.getNodeOrder() == null) return -1;
+            if (b.getNodeOrder() == null) return 1;
+            return a.getNodeOrder().compareTo(b.getNodeOrder());
+        });
+        
+        // Update orders sequentially
+        for (int i = 0; i < siblings.size(); i++) {
+            siblings.get(i).setNodeOrder(i);
+        }
+        repository.saveAll(siblings);
+        entityManager.flush();
     }
 
     @Transactional
