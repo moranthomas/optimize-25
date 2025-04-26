@@ -45,19 +45,48 @@ public class KnowledgeTreeService {
 
     @Transactional
     public KnowledgeNode createNode(KnowledgeNode node) {
-        if (node.getParent() != null) {
+        logger.info("Creating new node: {}", node.getName());
+        
+        // Handle parent relationship
+        if (node.getParent() != null && node.getParent().getId() != null) {
+            logger.info("Node has parent with ID: {}", node.getParent().getId());
+            // Fetch the parent from the database
+            KnowledgeNode parent = entityManager.find(KnowledgeNode.class, node.getParent().getId());
+            if (parent == null) {
+                throw new RuntimeException("Parent node not found with id: " + node.getParent().getId());
+            }
+            logger.info("Found parent node: {}", parent.getName());
+            
+            // Set the parent and update the relationship
+            node.setParent(parent);
+            parent.addChild(node);
+            
             // Set the level based on parent's level
-            node.setLevel(node.getParent().getLevel() + 1);
+            node.setLevel(parent.getLevel() + 1);
+            logger.info("Set node level to: {}", node.getLevel());
+            
             // Set the node order
-            node.setNodeOrder((int) (repository.countByParent(node.getParent()) + 1));
-            // Add the node to parent's children
-            node.getParent().addChild(node);
+            node.setNodeOrder((int) (repository.countByParent(parent) + 1));
+            logger.info("Set node order to: {}", node.getNodeOrder());
+            
+            // Save the parent to update the relationship
+            entityManager.merge(parent);
         } else {
             // Root node
+            logger.info("Creating root node");
+            node.setParent(null);
             node.setLevel(0);
             node.setNodeOrder((int) (repository.countByParent(null) + 1));
         }
-        return repository.save(node);
+        
+        // Save the new node
+        KnowledgeNode savedNode = repository.save(node);
+        logger.info("Saved node with ID: {}, Parent ID: {}, Level: {}", 
+            savedNode.getId(), 
+            savedNode.getParent() != null ? savedNode.getParent().getId() : "null", 
+            savedNode.getLevel());
+        
+        return savedNode;
     }
 
     @Transactional
@@ -242,5 +271,33 @@ public class KnowledgeTreeService {
             logger.info("Deleted child node: {} (ID: {})", child.getName(), child.getId());
         }
         parent.getChildren().clear();
+    }
+
+    public KnowledgeNode createNodeWithParent(String name, Long parentId) {
+        KnowledgeNode parent = repository.findById(parentId)
+            .orElseThrow(() -> new RuntimeException("Parent node not found"));
+
+        KnowledgeNode newNode = new KnowledgeNode();
+        newNode.setName(name);
+        newNode.setParent(parent);
+        newNode.setLevel(parent.getLevel() + 1);
+        
+        // Set node_order to be the next available number for this parent
+        Integer maxOrder = repository.findMaxNodeOrderByParentId(parentId);
+        newNode.setNodeOrder(maxOrder != null ? maxOrder + 1 : 1);
+
+        return repository.save(newNode);
+    }
+
+    public KnowledgeNode createNode(String name) {
+        KnowledgeNode newNode = new KnowledgeNode();
+        newNode.setName(name);
+        newNode.setLevel(0);
+        
+        // Set node_order to be the next available number for root nodes
+        Integer maxOrder = repository.findMaxNodeOrderByParentId(null);
+        newNode.setNodeOrder(maxOrder != null ? maxOrder + 1 : 1);
+
+        return repository.save(newNode);
     }
 } 

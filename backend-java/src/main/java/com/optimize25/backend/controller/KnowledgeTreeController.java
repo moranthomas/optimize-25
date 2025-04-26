@@ -1,5 +1,6 @@
 package com.optimize25.backend.controller;
 
+import com.optimize25.backend.dto.KnowledgeNodeDTO;
 import com.optimize25.backend.model.KnowledgeNode;
 import com.optimize25.backend.service.KnowledgeTreeService;
 import org.slf4j.Logger;
@@ -74,13 +75,18 @@ public class KnowledgeTreeController {
     }
 
     @PostMapping
-    public ResponseEntity<KnowledgeNode> createNode(@RequestBody KnowledgeNode node) {
-        KnowledgeNode createdNode = knowledgeTreeService.createNode(node);
-        // Ensure children are loaded for the created node
-        if (createdNode.getChildren() != null) {
-            createdNode.getChildren().size(); // Force lazy loading
+    public ResponseEntity<KnowledgeNode> createNode(@RequestBody KnowledgeNodeDTO nodeDTO) {
+        try {
+            KnowledgeNode newNode;
+            if (nodeDTO.getParent() != null && nodeDTO.getParent().getId() != null) {
+                newNode = knowledgeTreeService.createNodeWithParent(nodeDTO.getName(), nodeDTO.getParent().getId());
+            } else {
+                newNode = knowledgeTreeService.createNode(nodeDTO.getName());
+            }
+            return ResponseEntity.ok(newNode);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
         }
-        return ResponseEntity.ok(createdNode);
     }
 
     @PutMapping("/{id}")

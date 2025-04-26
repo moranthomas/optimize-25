@@ -15,15 +15,12 @@ INSERT INTO public.knowledge_nodes (name, description, level, node_order)
 VALUES ('Optimize Productivity', 'Productivity and time management', 0, 5);
 
 INSERT INTO public.knowledge_nodes (name, description, level, node_order)
-VALUES ('Career', 'Career development and professional growth', 0, 6);
+VALUES ('Learning Plan', 'Academic and educational topics', 0, 6);
 
-INSERT INTO public.knowledge_nodes (name, description, level, node_order)
-VALUES ('School', 'Academic and educational topics', 0, 7);
-
--- Insert Software Engineering under School
+-- Insert Software Engineering under Learning Plan
 INSERT INTO public.knowledge_nodes (name, description, parent_id, level, node_order)
 SELECT 'Software Engineering', 'Software development and engineering principles', id, 1, 1
-FROM public.knowledge_nodes WHERE name = 'School';
+FROM public.knowledge_nodes WHERE name = 'Learning Plan';
 
 -- Insert main branches under Software Engineering
 INSERT INTO public.knowledge_nodes (name, description, parent_id, level, node_order)
@@ -44,54 +41,54 @@ FROM public.knowledge_nodes WHERE name = 'Software Engineering';
 
 -- Insert Networking subtopics
 INSERT INTO public.knowledge_nodes (name, description, parent_id, level, node_order)
-SELECT 'Network Protocols (TCP/IP, HTTP, WebSocket)', 
-       'Overview of fundamental network protocols including TCP/IP, HTTP, and WebSocket',
-       id, 3, 1
+SELECT 'Network Protocols', 'Network communication protocols', id, 3, 1
 FROM public.knowledge_nodes WHERE name = 'Networking';
 
 INSERT INTO public.knowledge_nodes (name, description, parent_id, level, node_order)
-SELECT 'Network Security (SSL/TLS, Firewalls)',
-       'Understanding network security protocols and tools',
-       id, 3, 2
+SELECT 'Network Security', 'Network security principles', id, 3, 2
+FROM public.knowledge_nodes WHERE name = 'Networking';
+
+INSERT INTO public.knowledge_nodes (name, description, parent_id, level, node_order)
+SELECT 'Network Architecture', 'Network design and architecture', id, 3, 3
 FROM public.knowledge_nodes WHERE name = 'Networking';
 
 -- Insert Security subtopics
 INSERT INTO public.knowledge_nodes (name, description, parent_id, level, node_order)
-SELECT 'Authentication and Authorization',
-       'Understanding user identity verification and access control',
-       id, 3, 1
+SELECT 'Cryptography', 'Cryptographic principles and algorithms', id, 3, 1
 FROM public.knowledge_nodes WHERE name = 'Security';
 
 INSERT INTO public.knowledge_nodes (name, description, parent_id, level, node_order)
-SELECT 'Cryptography Fundamentals',
-       'Basic principles of encryption and cryptographic systems',
-       id, 3, 2
+SELECT 'Authentication', 'Authentication methods and systems', id, 3, 2
 FROM public.knowledge_nodes WHERE name = 'Security';
 
--- Insert Algorithm subtopics
 INSERT INTO public.knowledge_nodes (name, description, parent_id, level, node_order)
-SELECT 'Data Structures and Complexity Analysis',
-       'Understanding fundamental data structures and algorithmic complexity',
-       id, 3, 1
+SELECT 'Authorization', 'Authorization and access control', id, 3, 3
+FROM public.knowledge_nodes WHERE name = 'Security';
+
+-- Insert Algorithms subtopics
+INSERT INTO public.knowledge_nodes (name, description, parent_id, level, node_order)
+SELECT 'Sorting Algorithms', 'Various sorting algorithms', id, 3, 1
 FROM public.knowledge_nodes WHERE name = 'Algorithms';
 
 INSERT INTO public.knowledge_nodes (name, description, parent_id, level, node_order)
-SELECT 'Search and Sort Algorithms',
-       'Common searching and sorting algorithms and their implementations',
-       id, 3, 2
+SELECT 'Search Algorithms', 'Search and retrieval algorithms', id, 3, 2
 FROM public.knowledge_nodes WHERE name = 'Algorithms';
 
--- Insert Architecture subtopics
 INSERT INTO public.knowledge_nodes (name, description, parent_id, level, node_order)
-SELECT 'Design Patterns',
-       'Common software design patterns and their applications',
-       id, 3, 1
+SELECT 'Graph Algorithms', 'Graph theory and algorithms', id, 3, 3
+FROM public.knowledge_nodes WHERE name = 'Algorithms';
+
+-- Insert Software Architecture subtopics
+INSERT INTO public.knowledge_nodes (name, description, parent_id, level, node_order)
+SELECT 'Design Patterns', 'Software design patterns', id, 3, 1
 FROM public.knowledge_nodes WHERE name = 'Software Architecture';
 
 INSERT INTO public.knowledge_nodes (name, description, parent_id, level, node_order)
-SELECT 'Microservices Architecture',
-       'Understanding microservices architecture principles and patterns',
-       id, 3, 2
+SELECT 'System Design', 'System architecture and design', id, 3, 2
+FROM public.knowledge_nodes WHERE name = 'Software Architecture';
+
+INSERT INTO public.knowledge_nodes (name, description, parent_id, level, node_order)
+SELECT 'Microservices', 'Microservices architecture', id, 3, 3
 FROM public.knowledge_nodes WHERE name = 'Software Architecture';
 
 -- Update Optimize Productivity with description

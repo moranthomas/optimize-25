@@ -30,6 +30,7 @@ export default function Track() {
   const [selectedTopic, setSelectedTopic] = useState('all');
   const [topics, setTopics] = useState([]);
   const [allQuizHistory, setAllQuizHistory] = useState([]); // Store complete history
+  const [isNavigating, setIsNavigating] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -74,6 +75,133 @@ export default function Track() {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleViewLearningPlan = async () => {
+    if (selectedTopic === 'all') {
+      navigate('/knowledge');
+      return;
+    }
+
+    setIsNavigating(true);
+    try {
+      // First, check if the topic exists in the knowledge tree
+      const response = await fetch(`/api/knowledge-tree/search?query=${encodeURIComponent(selectedTopic)}`);
+      if (!response.ok) {
+        throw new Error('Failed to search knowledge tree');
+      }
+      const nodes = await response.json();
+      
+      // If the topic exists, get its full context before navigating
+      if (nodes.length > 0) {
+        const node = nodes[0];
+        const parentChain = [];
+        let currentNode = { ...node };
+        
+        // Get all parent nodes in a chain
+        while (currentNode.parentId) {
+          const parentResponse = await fetch(`/api/knowledge-tree/node/${currentNode.parentId}`);
+          if (!parentResponse.ok) break;
+          
+          const parent = await parentResponse.json();
+          if (parent) {
+            parentChain.unshift(parent);
+            currentNode = parent;
+          } else {
+            break;
+          }
+        }
+
+        // Navigate with the full context
+        navigate('/knowledge', { 
+          state: { 
+            selectedNodeId: node.id,
+            parentChain: parentChain // Pass the parent chain to help with initial rendering
+          } 
+        });
+        return;
+      }
+
+      // If the topic doesn't exist, first find Learning Plan
+      const learningPlanResponse = await fetch('/api/knowledge-tree/search?query=Learning Plan');
+      if (!learningPlanResponse.ok) {
+        throw new Error('Failed to find Learning Plan node');
+      }
+      const learningPlanNodes = await learningPlanResponse.json();
+      
+      if (learningPlanNodes.length === 0) {
+        throw new Error('Learning Plan node not found');
+      }
+
+      const learningPlanId = learningPlanNodes[0].id;
+      
+      // Then find or create Software Engineering under Learning Plan
+      const softwareEngResponse = await fetch('/api/knowledge-tree/search?query=Software Engineering');
+      if (!softwareEngResponse.ok) {
+        throw new Error('Failed to find Software Engineering node');
+      }
+      const softwareEngNodes = await softwareEngResponse.json();
+      
+      let softwareEngId;
+      if (softwareEngNodes.length === 0) {
+        // Create Software Engineering under Learning Plan
+        const createSoftwareEngResponse = await fetch('/api/knowledge-tree', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: 'Software Engineering',
+            parent: {
+              id: learningPlanId
+            }
+          })
+        });
+
+        if (!createSoftwareEngResponse.ok) {
+          throw new Error('Failed to create Software Engineering node');
+        }
+
+        const softwareEngNode = await createSoftwareEngResponse.json();
+        softwareEngId = softwareEngNode.id;
+      } else {
+        softwareEngId = softwareEngNodes[0].id;
+      }
+      
+      // Now create the new topic under Software Engineering
+      const createResponse = await fetch('/api/knowledge-tree', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: selectedTopic,
+          parent: {
+            id: softwareEngId
+          }
+        })
+      });
+
+      if (!createResponse.ok) {
+        throw new Error('Failed to create topic node');
+      }
+
+      const newNode = await createResponse.json();
+      
+      // Navigate with the full context
+      navigate('/knowledge', { 
+        state: { 
+          selectedNodeId: newNode.id,
+          shouldSuggest: true,
+          parentChain: [learningPlanNodes[0], softwareEngNodes[0]] // Pass the parent chain
+        } 
+      });
+    } catch (err) {
+      console.error('Error handling learning plan:', err);
+      setError('Failed to load learning plan. Please try again.');
+    } finally {
+      setIsNavigating(false);
     }
   };
 
@@ -248,10 +376,21 @@ export default function Track() {
                 I've created the following personally tailored learning plan for you.
               </p>
               <button
-                onClick={() => navigate('/knowledge')}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                onClick={handleViewLearningPlan}
+                disabled={isNavigating}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                View Learning Plan
+                {isNavigating ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Loading...
+                  </>
+                ) : (
+                  'View Learning Plan'
+                )}
               </button>
             </div>
 

@@ -1,6 +1,104 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { knowledgeTreeService } from '../services/knowledgeTreeService';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
+import { useLocation } from 'react-router-dom';
+
+const Branch = React.memo(({ 
+    node, 
+    level, 
+    index, 
+    expandedBranches, 
+    childNodes, 
+    selectedSubtopic,
+    onToggle,
+    onNodeClick,
+    getRootNodeColor 
+}) => {
+    const isExpanded = expandedBranches.has(node.id);
+    const children = isExpanded ? childNodes[node.id] || [] : [];
+    const hasChildren = node.childIds && node.childIds.length > 0;
+    const isRootNode = level === 0;
+    const rootColorClass = isRootNode ? getRootNodeColor(node.name) : '';
+
+    return (
+        <Draggable 
+            key={node.id} 
+            draggableId={String(node.id)}
+            index={index}
+        >
+            {(provided, snapshot) => (
+                <div
+                    ref={provided.innerRef}
+                    {...provided.draggableProps}
+                    {...provided.dragHandleProps}
+                    style={{
+                        ...provided.draggableProps.style,
+                        marginLeft: `${level * 1}rem`
+                    }}
+                    className={`${isRootNode ? 'mb-2' : ''}`}
+                >
+                    <div 
+                        className={`
+                            flex items-center py-2 px-3 rounded-lg transition-all duration-200
+                            ${isRootNode ? `${rootColorClass} border-2 font-semibold` : 'hover:bg-gray-100'}
+                            ${selectedSubtopic?.id === node.id ? 'bg-blue-100' : ''}
+                            ${snapshot.isDragging ? 'shadow-lg' : ''}
+                            cursor-pointer
+                        `}
+                        onClick={() => onNodeClick(node)}
+                    >
+                        {hasChildren && (
+                            <span 
+                                className={`mr-2 transition-transform duration-200 ${
+                                    isExpanded ? 'transform rotate-90' : ''
+                                }`}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onToggle(node.id);
+                                }}
+                            >
+                                ▶
+                            </span>
+                        )}
+                        <span className={`${isRootNode ? 'text-lg' : 'text-base'}`}>
+                            {node.name}
+                        </span>
+                    </div>
+                    {isExpanded && children.length > 0 && (
+                        <Droppable 
+                            droppableId={String(node.id)}
+                            type="node"
+                        >
+                            {(provided) => (
+                                <div 
+                                    ref={provided.innerRef}
+                                    {...provided.droppableProps}
+                                    className="ml-4 border-l-2 border-gray-200 pl-2"
+                                >
+                                    {children.map((child, childIndex) => (
+                                        <Branch
+                                            key={child.id}
+                                            node={child}
+                                            level={level + 1}
+                                            index={childIndex}
+                                            expandedBranches={expandedBranches}
+                                            childNodes={childNodes}
+                                            selectedSubtopic={selectedSubtopic}
+                                            onToggle={onToggle}
+                                            onNodeClick={onNodeClick}
+                                            getRootNodeColor={getRootNodeColor}
+                                        />
+                                    ))}
+                                    {provided.placeholder}
+                                </div>
+                            )}
+                        </Droppable>
+                    )}
+                </div>
+            )}
+        </Draggable>
+    );
+});
 
 const KnowledgeTree = () => {
     const [expandedBranches, setExpandedBranches] = useState(new Set());
@@ -19,6 +117,92 @@ const KnowledgeTree = () => {
         references: ''
     });
     const [isPopulating, setIsPopulating] = useState(false);
+    const location = useLocation();
+    const navigationHandled = React.useRef(false);
+
+    const handlePopulate = useCallback(async () => {
+        setIsPopulating(true);
+        try {
+            // Properly encode the node name for the URL
+            const encodedNodeName = encodeURIComponent(selectedSubtopic.name);
+            const response = await fetch(`http://localhost:8080/api/chatgpt/populate/${encodedNodeName}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to populate content');
+            }
+            
+            // Keep track of the current node ID
+            const currentNodeId = selectedSubtopic.id;
+            
+            // Clear all state to force a complete refresh
+            setRootNodes([]);
+            setChildNodes({});
+            setExpandedBranches(new Set());
+            setSelectedSubtopic(null);
+            
+            // Fetch fresh data
+            const nodes = await knowledgeTreeService.getRootNodes();
+            setRootNodes(nodes);
+            
+            // Find the original node in the fresh data
+            const originalNode = nodes.find(n => n.id === currentNodeId);
+            if (originalNode) {
+                // Set the selected node
+                setSelectedSubtopic(originalNode);
+                
+                // Get the parent chain
+                const parentChain = [];
+                let currentNode = { ...originalNode };
+                
+                while (currentNode.parentId) {
+                    const parent = await knowledgeTreeService.getNode(currentNode.parentId);
+                    if (parent) {
+                        parentChain.unshift(parent);
+                        currentNode = parent;
+                    } else {
+                        break;
+                    }
+                }
+                
+                // Expand all nodes in the chain
+                const newExpanded = new Set([
+                    ...parentChain.map(n => n.id),
+                    originalNode.id
+                ]);
+                setExpandedBranches(newExpanded);
+                
+                // Load children for all nodes in the chain
+                const loadPromises = [...parentChain, originalNode].map(async (n) => {
+                    const children = await knowledgeTreeService.getChildren(n.id);
+                    if (children && children.length > 0) {
+                        return [n.id, children];
+                    }
+                    return null;
+                });
+                
+                const results = await Promise.all(loadPromises);
+                const newChildNodes = {};
+                results.forEach(result => {
+                    if (result) {
+                        const [id, children] = result;
+                        newChildNodes[id] = children;
+                    }
+                });
+                
+                setChildNodes(newChildNodes);
+            }
+        } catch (error) {
+            console.error('Error populating content:', error);
+            setError('Failed to populate content');
+        } finally {
+            setIsPopulating(false);
+        }
+    }, [selectedSubtopic, setRootNodes, setChildNodes, setExpandedBranches, setSelectedSubtopic, setError, knowledgeTreeService]);
 
     useEffect(() => {
         const fetchRootNodes = async () => {
@@ -26,6 +210,7 @@ const KnowledgeTree = () => {
                 console.log('Fetching root nodes...');
                 const nodes = await knowledgeTreeService.getRootNodes();
                 console.log('Root nodes received:', nodes);
+                console.log('Learning Plan node:', nodes.find(n => n.name === 'Learning Plan'));
                 setRootNodes(nodes);
                 setLoading(false);
             } catch (err) {
@@ -49,93 +234,192 @@ const KnowledgeTree = () => {
         }
     }, [selectedSubtopic]);
 
-    const toggleBranch = async (branchId) => {
-        console.log('Toggling branch:', branchId);
-        const newExpanded = new Set(expandedBranches);
-        if (newExpanded.has(branchId)) {
-            console.log('Collapsing branch:', branchId);
-            newExpanded.delete(branchId);
+    // Navigation effect
+    useEffect(() => {
+        const state = location.state;
+        
+        // Skip if no navigation state or if already handled
+        if (!state?.selectedNodeId || navigationHandled.current) {
+            return;
+        }
+
+        const loadNodeAndParents = async () => {
+            try {
+                // Get the target node
+                const node = await knowledgeTreeService.getNode(state.selectedNodeId);
+                if (!node) return;
+
+                // Use provided parent chain if available, otherwise fetch it
+                let parentChain = state.parentChain || [];
+                if (!parentChain.length) {
+                    // Get all parent nodes in a chain
+                    let currentNode = { ...node };
+                    while (currentNode.parentId) {
+                        const parent = await knowledgeTreeService.getNode(currentNode.parentId);
+                        if (parent) {
+                            parentChain.unshift(parent);
+                            currentNode = parent;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+
+                // First, set the selected node
+                setSelectedSubtopic(node);
+                
+                // Then expand all nodes in one go
+                const newExpanded = new Set([
+                    ...parentChain.map(n => n.id),
+                    node.id
+                ]);
+                setExpandedBranches(newExpanded);
+                
+                // Load all children in parallel, including children of Learning Plan
+                const loadPromises = [...parentChain, node].map(async (n) => {
+                    const children = await knowledgeTreeService.getChildren(n.id);
+                    if (children && children.length > 0) {
+                        return [n.id, children];
+                    }
+                    return null;
+                });
+
+                // Also load children of Learning Plan if it's in the parent chain
+                const learningPlanNode = parentChain.find(n => n.name === 'Learning Plan');
+                if (learningPlanNode) {
+                    const learningPlanChildren = await knowledgeTreeService.getChildren(learningPlanNode.id);
+                    if (learningPlanChildren && learningPlanChildren.length > 0) {
+                        loadPromises.push([learningPlanNode.id, learningPlanChildren]);
+                    }
+                }
+
+                const results = await Promise.all(loadPromises);
+                const newChildNodes = {};
+                results.forEach(result => {
+                    if (result) {
+                        const [id, children] = result;
+                        newChildNodes[id] = children;
+                    }
+                });
+
+                setChildNodes(prev => ({
+                    ...prev,
+                    ...newChildNodes
+                }));
+
+                // Mark this navigation as handled
+                navigationHandled.current = true;
+
+                // If shouldSuggest is true, trigger populate
+                if (state.shouldSuggest) {
+                    handlePopulate();
+                }
+            } catch (error) {
+                console.error('Error in navigation:', error);
+                setError('Failed to load node details');
+            }
+        };
+
+        // Only proceed if root nodes are loaded
+        if (rootNodes.length > 0) {
+            loadNodeAndParents();
         } else {
-            console.log('Expanding branch:', branchId);
-            newExpanded.add(branchId);
-            if (!childNodes[branchId]) {
+            // If root nodes aren't loaded yet, fetch them first
+            const fetchRootNodes = async () => {
                 try {
-                    console.log('Fetching children for branch:', branchId);
-                    const children = await knowledgeTreeService.getChildren(branchId);
-                    // Set parentId for each child
+                    const nodes = await knowledgeTreeService.getRootNodes();
+                    setRootNodes(nodes);
+                    // Wait a bit for the state to update before proceeding
+                    setTimeout(loadNodeAndParents, 100);
+                } catch (error) {
+                    console.error('Error fetching root nodes:', error);
+                    setError('Failed to load knowledge tree');
+                }
+            };
+            fetchRootNodes();
+        }
+    }, [location.state, rootNodes, handlePopulate, knowledgeTreeService]);
+
+    // Reset navigation handled flag when location changes
+    useEffect(() => {
+        navigationHandled.current = false;
+    }, [location.state]);
+
+    const toggleBranch = useCallback(async (branchId) => {
+        const newExpanded = new Set(expandedBranches);
+        
+        if (newExpanded.has(branchId)) {
+            newExpanded.delete(branchId);
+            setExpandedBranches(newExpanded);
+            return;
+        }
+        
+        newExpanded.add(branchId);
+        setExpandedBranches(newExpanded);
+        
+        if (!childNodes[branchId]) {
+            try {
+                const children = await knowledgeTreeService.getChildren(branchId);
+                if (children && children.length > 0) {
                     const childrenWithParent = children.map(child => ({
                         ...child,
                         parentId: branchId
                     }));
-                    console.log('Children received with parent IDs:', childrenWithParent);
                     setChildNodes(prev => ({
                         ...prev,
                         [branchId]: childrenWithParent
                     }));
-                } catch (err) {
-                    console.error('Error fetching children:', err);
-                    setError('Failed to load children');
                 }
+            } catch (err) {
+                console.error('Error fetching children:', err);
+                setError('Failed to load children');
             }
         }
-        setExpandedBranches(newExpanded);
-    };
+    }, [expandedBranches, childNodes, knowledgeTreeService]);
 
-    const handleSubtopicClick = async (node) => {
-        console.log('Selected node:', node);
+    const handleSubtopicClick = useCallback(async (node) => {
+        if (selectedSubtopic?.id === node.id) return;
+        
         setSelectedSubtopic(node);
         setIsEditing(false);
 
-        // Load children if this is a branch node
-        if (node.childIds && node.childIds.length > 0 && !childNodes[node.id]) {
+        if (node.childIds?.length > 0 && !childNodes[node.id]) {
             try {
-                console.log('Fetching children for branch:', node.id);
                 const children = await knowledgeTreeService.getChildren(node.id);
-                // Set parentId for each child
-                const childrenWithParent = children.map(child => ({
-                    ...child,
-                    parentId: node.id
-                }));
-                console.log('Children received with parent IDs:', childrenWithParent);
-                setChildNodes(prev => ({
-                    ...prev,
-                    [node.id]: childrenWithParent
-                }));
+                if (children && children.length > 0) {
+                    const childrenWithParent = children.map(child => ({
+                        ...child,
+                        parentId: node.id
+                    }));
+                    setChildNodes(prev => ({
+                        ...prev,
+                        [node.id]: childrenWithParent
+                    }));
+                }
             } catch (err) {
                 console.error('Error fetching children:', err);
                 setError('Failed to load children');
             }
         }
 
-        // Create a new set that includes both existing expanded branches and the path to the selected node
+        // Only update expanded branches if needed
         const newExpanded = new Set(expandedBranches);
         let currentNode = node;
+        let hasChanges = false;
         
-        // Traverse up the tree to find all parent nodes
-        while (currentNode && currentNode.parentId) {
-            // Find the parent node in either rootNodes or childNodes
-            let parentNode = rootNodes.find(n => n.id === currentNode.parentId);
-            if (!parentNode) {
-                // Search in childNodes
-                for (const parentId in childNodes) {
-                    const found = childNodes[parentId].find(n => n.id === currentNode.parentId);
-                    if (found) {
-                        parentNode = found;
-                        break;
-                    }
-                }
+        while (currentNode?.parentId) {
+            if (!newExpanded.has(currentNode.parentId)) {
+                hasChanges = true;
+                newExpanded.add(currentNode.parentId);
             }
-            
-            if (parentNode) {
-                newExpanded.add(parentNode.id);
-                currentNode = parentNode;
-            } else {
-                break; // Stop if we can't find a parent
-            }
+            currentNode = rootNodes.find(n => n.id === currentNode.parentId) ||
+                         Object.values(childNodes).flat().find(n => n.id === currentNode.parentId);
         }
         
-        setExpandedBranches(newExpanded);
-    };
+        if (hasChanges) {
+            setExpandedBranches(newExpanded);
+        }
+    }, [selectedSubtopic, childNodes, expandedBranches, rootNodes, knowledgeTreeService]);
 
     const handleSearch = async (e) => {
         const query = e.target.value;
@@ -145,7 +429,58 @@ const KnowledgeTree = () => {
                 console.log('Searching for:', query);
                 const results = await knowledgeTreeService.searchNodes(query);
                 console.log('Search results:', results);
-                setRootNodes(results);
+                
+                // Instead of replacing root nodes, find and expand to the search results
+                if (results.length > 0) {
+                    const node = results[0];
+                    
+                    // Get all parent nodes in a chain
+                    const parentChain = [];
+                    let currentNode = { ...node };
+                    
+                    while (currentNode.parentId) {
+                        const parent = await knowledgeTreeService.getNode(currentNode.parentId);
+                        if (parent) {
+                            parentChain.unshift(parent);
+                            currentNode = parent;
+                        } else {
+                            break;
+                        }
+                    }
+
+                    // Set the selected node
+                    setSelectedSubtopic(node);
+                    
+                    // Then expand all nodes in one go
+                    const newExpanded = new Set([
+                        ...parentChain.map(n => n.id),
+                        node.id
+                    ]);
+                    setExpandedBranches(newExpanded);
+                    
+                    // Load all children in parallel
+                    const loadPromises = [...parentChain, node].map(async (n) => {
+                        const children = await knowledgeTreeService.getChildren(n.id);
+                        if (children && children.length > 0) {
+                            return [n.id, children];
+                        }
+                        return null;
+                    });
+
+                    const loadResults = await Promise.all(loadPromises);
+                    const newChildNodes = {};
+                    loadResults.forEach(result => {
+                        if (result) {
+                            const [id, children] = result;
+                            newChildNodes[id] = children;
+                        }
+                    });
+
+                    setChildNodes(prev => ({
+                        ...prev,
+                        ...newChildNodes
+                    }));
+                }
             } catch (err) {
                 console.error('Search error:', err);
                 setError('Failed to search knowledge tree');
@@ -156,6 +491,9 @@ const KnowledgeTree = () => {
                 const nodes = await knowledgeTreeService.getRootNodes();
                 console.log('Root nodes received:', nodes);
                 setRootNodes(nodes);
+                setSelectedSubtopic(null);
+                setExpandedBranches(new Set());
+                setChildNodes({});
             } catch (err) {
                 console.error('Error fetching root nodes:', err);
                 setError('Failed to load knowledge tree');
@@ -215,125 +553,49 @@ const KnowledgeTree = () => {
         });
     };
 
-    const handlePopulate = async () => {
-        setIsPopulating(true);
-        try {
-            // Properly encode the node name for the URL
-            const encodedNodeName = encodeURIComponent(selectedSubtopic.name);
-            const response = await fetch(`http://localhost:8080/api/chatgpt/populate/${encodedNodeName}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-            });
-            
-            if (!response.ok) {
-                throw new Error('Failed to populate content');
-            }
-            
-            // Clear all state to force a complete refresh
-            setRootNodes([]);
-            setChildNodes({});
-            setExpandedBranches(new Set());
-            setSelectedSubtopic(null);
-            
-            // Fetch fresh data
-            const nodes = await knowledgeTreeService.getRootNodes();
-            setRootNodes(nodes);
-            
-            // If the original node was a root node, expand it and load its children
-            const originalNode = nodes.find(n => n.name === selectedSubtopic.name);
-            if (originalNode) {
-                const newExpanded = new Set([originalNode.id]);
-                setExpandedBranches(newExpanded);
-                
-                const children = await knowledgeTreeService.getChildren(originalNode.id);
-                setChildNodes(prev => ({
-                    ...prev,
-                    [originalNode.id]: children
-                }));
-                
-                // Select the original node again
-                setSelectedSubtopic(originalNode);
-            }
-        } catch (error) {
-            console.error('Error populating content:', error);
-            setError('Failed to populate content');
-        } finally {
-            setIsPopulating(false);
-        }
-    };
-
-    const getNodePath = (node) => {
-        const path = [];
-        let currentNode = node;
+    const getNodePath = useCallback((node) => {
+        if (!node) return [];
         
-        console.log('Starting path building for node:', {
-            id: node.id,
-            name: node.name,
-            parentId: node.parentId
-        });
+        const path = [];
+        let currentNode = { ...node }; // Create a copy to avoid mutations
+        const processedIds = new Set(); // Track processed nodes to prevent loops
         
         // Helper function to find a node by ID in the entire tree
         const findNodeById = (id) => {
-            console.log('Searching for node with ID:', id);
-            
             // Check root nodes first
             let found = rootNodes.find(n => n.id === id);
-            if (found) {
-                console.log('Found in root nodes:', found.name);
-                return found;
-            }
+            if (found) return { ...found };
             
             // Then check all loaded child nodes
             for (const parentId in childNodes) {
                 found = childNodes[parentId].find(n => n.id === id);
-                if (found) {
-                    console.log('Found in child nodes:', found.name, 'under parent:', parentId);
-                    return found;
-                }
+                if (found) return { ...found };
             }
             
-            console.log('Node not found with ID:', id);
             return null;
         };
         
         // Build the path from current node up to root
-        while (currentNode) {
-            console.log('Adding to path:', {
-                id: currentNode.id,
-                name: currentNode.name,
-                parentId: currentNode.parentId
-            });
-            
+        while (currentNode && !processedIds.has(currentNode.id)) {
+            processedIds.add(currentNode.id);
             path.unshift(currentNode);
             
             if (currentNode.parentId) {
                 const parentNode = findNodeById(currentNode.parentId);
-                if (!parentNode) {
-                    console.log('Could not find parent node, stopping path building');
-                    break;
-                }
+                if (!parentNode || processedIds.has(parentNode.id)) break;
                 currentNode = parentNode;
             } else {
-                console.log('Reached root node, stopping path building');
-                currentNode = null;
+                break;
             }
         }
         
-        console.log('Final path:', path.map(n => n.name));
         return path;
-    };
+    }, [rootNodes, childNodes]);
 
     const renderBreadcrumbs = () => {
         if (!selectedSubtopic) return null;
-        
         const path = getNodePath(selectedSubtopic);
-        
-        if (path.length === 0) {
-            console.log('No path found for node:', selectedSubtopic.name);
-            return null;
-        }
+        if (path.length === 0) return null;
         
         return (
             <div className="flex items-center space-x-2 text-sm text-gray-600 mb-4">
@@ -372,7 +634,7 @@ const KnowledgeTree = () => {
             'Learning': 'bg-emerald-50 text-emerald-800 border-emerald-200',
             'Creativity': 'bg-lime-50 text-lime-800 border-lime-200',
             'Core Learning Modules': 'bg-emerald-50 text-emerald-800 border-emerald-200',
-            'School': 'bg-lime-50 text-lime-800 border-lime-200',
+            'Learning Plan': 'bg-lime-50 text-lime-800 border-lime-200',
             
             // Spiritual Health
             'Optimize Spiritual': 'bg-teal-50 text-teal-800 border-teal-200',
@@ -560,7 +822,7 @@ const KnowledgeTree = () => {
         }
     };
 
-    const renderTree = () => (
+    const renderTree = useCallback(() => (
         <DragDropContext onDragEnd={handleDragEnd}>
             <Droppable 
                 droppableId="root"
@@ -572,89 +834,26 @@ const KnowledgeTree = () => {
                         {...provided.droppableProps}
                         className="space-y-1"
                     >
-                        {rootNodes.map((node, index) => renderBranch(node, 0, index))}
+                        {rootNodes.map((node, index) => (
+                            <Branch
+                                key={node.id}
+                                node={node}
+                                level={0}
+                                index={index}
+                                expandedBranches={expandedBranches}
+                                childNodes={childNodes}
+                                selectedSubtopic={selectedSubtopic}
+                                onToggle={toggleBranch}
+                                onNodeClick={handleSubtopicClick}
+                                getRootNodeColor={getRootNodeColor}
+                            />
+                        ))}
                         {provided.placeholder}
                     </div>
                 )}
             </Droppable>
         </DragDropContext>
-    );
-
-    const renderBranch = (node, level = 0, index) => {
-        const isExpanded = expandedBranches.has(node.id);
-        const children = isExpanded ? childNodes[node.id] || [] : [];
-        const hasChildren = node.childIds && node.childIds.length > 0;
-        const isRootNode = level === 0;
-        const rootColorClass = isRootNode ? getRootNodeColor(node.name) : '';
-
-        return (
-            <Draggable 
-                key={node.id} 
-                draggableId={String(node.id)}
-                index={index}
-            >
-                {(provided, snapshot) => (
-                    <div
-                        ref={provided.innerRef}
-                        {...provided.draggableProps}
-                        {...provided.dragHandleProps}
-                        style={{
-                            ...provided.draggableProps.style,
-                            marginLeft: `${level * 1}rem`
-                        }}
-                        className={`${isRootNode ? 'mb-2' : ''}`}
-                    >
-                        <div 
-                            className={`
-                                flex items-center py-2 px-3 rounded-lg transition-all duration-200
-                                ${isRootNode ? `${rootColorClass} border-2 font-semibold` : 'hover:bg-gray-100'}
-                                ${selectedSubtopic?.id === node.id ? 'bg-blue-100' : ''}
-                                ${snapshot.isDragging ? 'shadow-lg' : ''}
-                                cursor-pointer
-                            `}
-                            onClick={() => handleSubtopicClick(node)}
-                        >
-                            {hasChildren && (
-                                <span 
-                                    className={`mr-2 transition-transform duration-200 ${
-                                        isExpanded ? 'transform rotate-90' : ''
-                                    }`}
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleBranch(node.id);
-                                    }}
-                                >
-                                    ▶
-                                </span>
-                            )}
-                            <span className={`${isRootNode ? 'text-lg' : 'text-base'}`}>
-                                {node.name}
-                            </span>
-                        </div>
-                        {isExpanded && children.length > 0 && (
-                            <Droppable 
-                                droppableId={String(node.id)}
-                                type="node"
-                            >
-                                {(provided) => (
-                                    <div 
-                                        ref={provided.innerRef}
-                                        {...provided.droppableProps}
-                                        className="ml-4 border-l-2 border-gray-200 pl-2"
-                                    >
-                                        {children.map((child, childIndex) => 
-                                            renderBranch(child, level + 1, childIndex)
-                                        )}
-                                        {provided.placeholder}
-                                    </div>
-                                )}
-                            </Droppable>
-                        )}
-                    </div>
-                )}
-            </Draggable>
-        );
-    };
+    ), [rootNodes, expandedBranches, childNodes, selectedSubtopic, toggleBranch, handleSubtopicClick, handleDragEnd]);
 
     const renderContent = () => {
         if (!selectedSubtopic) {

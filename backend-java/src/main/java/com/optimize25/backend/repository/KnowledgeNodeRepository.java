@@ -23,4 +23,7 @@ public interface KnowledgeNodeRepository extends JpaRepository<KnowledgeNode, Lo
     
     @Query("SELECT n FROM KnowledgeNode n WHERE LOWER(n.name) LIKE LOWER(CONCAT('%', :query, '%'))")
     List<KnowledgeNode> findByNameContainingIgnoreCase(@Param("query") String query);
+
+    @Query("SELECT MAX(kn.nodeOrder) FROM KnowledgeNode kn WHERE kn.parent.id = :parentId")
+    Integer findMaxNodeOrderByParentId(@Param("parentId") Long parentId);
 } 
