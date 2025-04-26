@@ -29,4 +29,6 @@ public interface KnowledgeNodeRepository extends JpaRepository<KnowledgeNode, Lo
 
     @Query("SELECT k.name FROM KnowledgeNode k WHERE k.parent.id = :parentId")
     List<String> findChildrenNamesByParentId(@Param("parentId") Long parentId);
+
+    Optional<KnowledgeNode> findByNameAndParent(String name, KnowledgeNode parent);
 } 

@@ -27,6 +27,9 @@ public class ChatGPTService {
     private final ObjectMapper objectMapper;
     private static final int BATCH_SIZE = 50;
     private static final Set<String> nodesBeingPopulated = Collections.synchronizedSet(new HashSet<>());
+    private static final Set<String> KNOWN_CATEGORIES = Set.of(
+        "Software Engineering", "Data Science", "Business", "Psychology", "Mathematics", "Physics", "Biology"
+    );
 
     public ChatGPTService(KnowledgeNodeRepository knowledgeNodeRepository, Environment environment) {
         this.restTemplate = new RestTemplate();
@@ -49,17 +52,36 @@ public class ChatGPTService {
         }
         
         try {
-            // Get the node by name with a single query
-            KnowledgeNode node = knowledgeNodeRepository.findByName(nodeName)
-                .orElseThrow(() -> new RuntimeException("Node not found: " + nodeName));
+            // First, determine the appropriate parent category for this node
+            KnowledgeNode parentNode = determineParentCategory(nodeName);
+            
+            // Create or get the node
+            KnowledgeNode node;
+            Optional<KnowledgeNode> existingNode = knowledgeNodeRepository.findByName(nodeName);
+            
+            if (existingNode.isPresent()) {
+                node = existingNode.get();
+                // Update parent if needed
+                if (!node.getParent().equals(parentNode)) {
+                    node.setParent(parentNode);
+                    node = knowledgeNodeRepository.save(node);
+                }
+            } else {
+                // Create new node under determined parent
+                node = new KnowledgeNode();
+                node.setName(nodeName);
+                node.setParent(parentNode);
+                node.setLevel(parentNode.getLevel() + 1);
+                node = knowledgeNodeRepository.save(node);
+            }
             
             // Get existing children names for duplicate detection
             Set<String> existingChildrenNames = new HashSet<>(
                 knowledgeNodeRepository.findChildrenNamesByParentId(node.getId())
             );
             
-            logger.info("Found node with ID: {} and {} existing children", 
-                node.getId(), existingChildrenNames.size());
+            logger.info("Found/Created node with ID: {} under parent: {}, with {} existing children", 
+                node.getId(), parentNode.getName(), existingChildrenNames.size());
 
             // Prepare the prompt for ChatGPT with context
             String prompt = buildPromptWithContext(nodeName, existingChildrenNames);
@@ -76,7 +98,6 @@ public class ChatGPTService {
                 throw new RuntimeException("Failed to populate node: " + e.getMessage());
             }
         } finally {
-            // Always remove the node from the set when done
             nodesBeingPopulated.remove(nodeName);
         }
     }
@@ -264,6 +285,96 @@ public class ChatGPTService {
                     }
                 }
             }
+        }
+    }
+
+    private KnowledgeNode determineParentCategory(String nodeName) {
+        try {
+            // If the topic itself is a known category, place it directly under Learning Plan
+            if (KNOWN_CATEGORIES.stream().anyMatch(cat -> cat.equalsIgnoreCase(nodeName))) {
+                return knowledgeNodeRepository.findByName("Learning Plan")
+                    .orElseThrow(() -> new RuntimeException("Learning Plan root node not found"));
+            }
+
+            String prompt = String.format(
+                "Analyze the topic '%s' and determine its most appropriate category path. " +
+                "Consider these main categories:\n" +
+                "1. Software Engineering (for programming, development, computer science)\n" +
+                "2. Data Science (for statistics, machine learning, data analysis)\n" +
+                "3. Business (for management, finance, entrepreneurship)\n" +
+                "4. Psychology (for mental health, behavior, cognitive science)\n" +
+                "5. Mathematics (for pure math, algebra, calculus)\n" +
+                "6. Physics (for physical sciences, mechanics, quantum physics)\n" +
+                "7. Biology (for life sciences, genetics, ecology)\n" +
+                "Format response as JSON: {\"category\": \"main category\", \"subcategory\": \"specific area\"}\n" +
+                "If the topic is itself a main category, return it as the category and leave subcategory blank.\n" +
+                "Example: For 'TCP/IP' return {\"category\": \"Software Engineering\", \"subcategory\": \"Networking\"}. For 'Psychology' return {\"category\": \"Psychology\", \"subcategory\": \"\"}", 
+                nodeName
+            );
+
+            Map<String, Object> request = new HashMap<>();
+            request.put("model", "gpt-4");
+            request.put("messages", List.of(
+                Map.of("role", "system", "content", "You are a knowledgeable academic advisor."),
+                Map.of("role", "user", "content", prompt)
+            ));
+            request.put("temperature", 0.3);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(apiKey);
+
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
+            Map<String, Object> response = restTemplate.postForObject(apiUrl, entity, Map.class);
+            
+            if (response != null && response.containsKey("choices")) {
+                List<Map<String, Object>> choices = (List<Map<String, Object>>) response.get("choices");
+                if (!choices.isEmpty()) {
+                    Map<String, Object> message = (Map<String, Object>) choices.get(0).get("message");
+                    String content = (String) message.get("content");
+                    Map<String, String> categoryInfo = objectMapper.readValue(content, Map.class);
+                    
+                    // Get or create the main category
+                    String mainCategory = categoryInfo.get("category");
+                    String subcategory = categoryInfo.get("subcategory");
+                    
+                    KnowledgeNode learningPlan = knowledgeNodeRepository.findByName("Learning Plan")
+                        .orElseThrow(() -> new RuntimeException("Learning Plan root node not found"));
+
+                    // If the main category is not recognized or is the same as the topic, place under Learning Plan
+                    if (mainCategory == null || !KNOWN_CATEGORIES.contains(mainCategory) || mainCategory.equalsIgnoreCase(nodeName)) {
+                        return learningPlan;
+                    }
+
+                    KnowledgeNode mainCategoryNode = knowledgeNodeRepository.findByName(mainCategory)
+                        .orElseGet(() -> {
+                            KnowledgeNode newCategory = new KnowledgeNode();
+                            newCategory.setName(mainCategory);
+                            newCategory.setParent(learningPlan);
+                            newCategory.setLevel(learningPlan.getLevel() + 1);
+                            return knowledgeNodeRepository.save(newCategory);
+                        });
+
+                    // Get or create the subcategory if provided
+                    if (subcategory != null && !subcategory.isEmpty() && !subcategory.equalsIgnoreCase(nodeName)) {
+                        return knowledgeNodeRepository.findByNameAndParent(subcategory, mainCategoryNode)
+                            .orElseGet(() -> {
+                                KnowledgeNode newSubcategory = new KnowledgeNode();
+                                newSubcategory.setName(subcategory);
+                                newSubcategory.setParent(mainCategoryNode);
+                                newSubcategory.setLevel(mainCategoryNode.getLevel() + 1);
+                                return knowledgeNodeRepository.save(newSubcategory);
+                            });
+                    }
+                    
+                    return mainCategoryNode;
+                }
+            }
+            
+            throw new RuntimeException("Failed to determine category for: " + nodeName);
+        } catch (Exception e) {
+            logger.error("Error determining category for {}: {}", nodeName, e.getMessage());
+            throw new RuntimeException("Failed to determine appropriate category: " + e.getMessage());
         }
     }
 } 
