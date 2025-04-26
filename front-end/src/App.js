@@ -16,7 +16,7 @@ function Navigation() {
   const isTrack = location.pathname === '/track';
 
   return (
-    <nav className="bg-white shadow-sm">
+    <nav className="fixed top-0 left-0 right-0 bg-white shadow-sm z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex">
@@ -81,7 +81,7 @@ function App() {
       <div className="min-h-screen bg-gray-50">
         <Navigation />
         {/* Main Content */}
-        <main>
+        <main className="pt-16">
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/knowledge" element={<KnowledgeTree />} />
