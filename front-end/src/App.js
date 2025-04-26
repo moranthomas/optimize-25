@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react
 import KnowledgeTree from './components/KnowledgeTree';
 import Evaluate from './components/Evaluate';
 import Track from './components/Track';
+import LandingPage from './components/LandingPage';
 import AskDialog from './components/AskDialog';
 import robotLogo from './assets/Opt25.png';
 import './App.css'
@@ -80,13 +81,9 @@ function App() {
       <div className="min-h-screen bg-gray-50">
         <Navigation />
         {/* Main Content */}
-        <main className="py-6">
+        <main>
           <Routes>
-            <Route path="/" element={
-              <div className="max-w-xl mx-auto px-4 sm:px-6 lg:px-8">
-                <h1 className="text-3xl font-bold text-gray-900 mb-4">Welcome to OptimizeMe</h1>
-              </div>
-            } />
+            <Route path="/" element={<LandingPage />} />
             <Route path="/knowledge" element={<KnowledgeTree />} />
             <Route path="/evaluate" element={<Evaluate />} />
             <Route path="/track" element={<Track />} />
