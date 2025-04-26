@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { knowledgeTreeService } from '../services/knowledgeTreeService';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import { useLocation } from 'react-router-dom';
@@ -117,92 +117,102 @@ const KnowledgeTree = () => {
         references: ''
     });
     const [isPopulating, setIsPopulating] = useState(false);
+    const populateRequestRef = useRef(null);
     const location = useLocation();
     const navigationHandled = React.useRef(false);
+    const selectedSubtopicRef = useRef(null);
+
+    // Keep selectedSubtopicRef in sync with selectedSubtopic
+    useEffect(() => {
+        selectedSubtopicRef.current = selectedSubtopic;
+    }, [selectedSubtopic]);
 
     const handlePopulate = useCallback(async () => {
+        // Use the ref to check the current selected topic
+        const currentSubtopic = selectedSubtopicRef.current;
+        if (!currentSubtopic?.id) {
+            setError('No topic selected');
+            return;
+        }
+
+        // Prevent multiple simultaneous requests
+        if (isPopulating || populateRequestRef.current) {
+            console.log('Population already in progress, skipping request');
+            return;
+        }
+
         setIsPopulating(true);
+        setError(null);
+        
         try {
+            // Create an AbortController for this request
+            populateRequestRef.current = new AbortController();
+            
+            // Store the current node ID and data to maintain context
+            const currentNodeId = currentSubtopic.id;
+            
+            // Get existing children for the selected node
+            const existingChildren = childNodes[currentNodeId] || [];
+            
             // Properly encode the node name for the URL
-            const encodedNodeName = encodeURIComponent(selectedSubtopic.name);
+            const encodedNodeName = encodeURIComponent(currentSubtopic.name);
             const response = await fetch(`http://localhost:8080/api/chatgpt/populate/${encodedNodeName}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
+                body: JSON.stringify({
+                    existingNodes: existingChildren.map(node => ({
+                        name: node.name,
+                        description: node.description,
+                        content: node.content
+                    }))
+                }),
+                signal: populateRequestRef.current.signal
             });
             
             if (!response.ok) {
-                throw new Error('Failed to populate content');
+                const errorText = await response.text();
+                throw new Error(errorText || 'Failed to populate content');
             }
-            
-            // Keep track of the current node ID
-            const currentNodeId = selectedSubtopic.id;
-            
-            // Clear all state to force a complete refresh
-            setRootNodes([]);
-            setChildNodes({});
-            setExpandedBranches(new Set());
-            setSelectedSubtopic(null);
-            
-            // Fetch fresh data
+
+            // Refresh the data while maintaining context
             const nodes = await knowledgeTreeService.getRootNodes();
             setRootNodes(nodes);
             
             // Find the original node in the fresh data
-            const originalNode = nodes.find(n => n.id === currentNodeId);
-            if (originalNode) {
-                // Set the selected node
-                setSelectedSubtopic(originalNode);
-                
-                // Get the parent chain
-                const parentChain = [];
-                let currentNode = { ...originalNode };
-                
-                while (currentNode.parentId) {
-                    const parent = await knowledgeTreeService.getNode(currentNode.parentId);
-                    if (parent) {
-                        parentChain.unshift(parent);
-                        currentNode = parent;
-                    } else {
-                        break;
-                    }
-                }
-                
-                // Expand all nodes in the chain
-                const newExpanded = new Set([
-                    ...parentChain.map(n => n.id),
-                    originalNode.id
-                ]);
-                setExpandedBranches(newExpanded);
-                
-                // Load children for all nodes in the chain
-                const loadPromises = [...parentChain, originalNode].map(async (n) => {
-                    const children = await knowledgeTreeService.getChildren(n.id);
-                    if (children && children.length > 0) {
-                        return [n.id, children];
-                    }
-                    return null;
-                });
-                
-                const results = await Promise.all(loadPromises);
-                const newChildNodes = {};
-                results.forEach(result => {
-                    if (result) {
-                        const [id, children] = result;
-                        newChildNodes[id] = children;
-                    }
-                });
-                
-                setChildNodes(newChildNodes);
+            const refreshedNode = await knowledgeTreeService.getNode(currentNodeId);
+            if (!refreshedNode) {
+                throw new Error('Failed to find node after population');
+            }
+            
+            // Update the selected node while maintaining context
+            setSelectedSubtopic(refreshedNode);
+            selectedSubtopicRef.current = refreshedNode;
+            
+            // Fetch and update children
+            const newChildren = await knowledgeTreeService.getChildren(currentNodeId);
+            if (newChildren) {
+                setChildNodes(prev => ({
+                    ...prev,
+                    [currentNodeId]: newChildren
+                }));
             }
         } catch (error) {
-            console.error('Error populating content:', error);
-            setError('Failed to populate content');
+            if (error.name === 'AbortError') {
+                console.log('Population request was cancelled');
+            } else {
+                console.error('Error populating content:', error);
+                setError(error.message || 'Failed to populate content');
+            }
         } finally {
-            setIsPopulating(false);
+            // Only clear populating state if we're still on the same node
+            if (selectedSubtopicRef.current?.id === currentSubtopic.id) {
+                setIsPopulating(false);
+                populateRequestRef.current = null;
+            }
         }
-    }, [selectedSubtopic, setRootNodes, setChildNodes, setExpandedBranches, setSelectedSubtopic, setError, knowledgeTreeService]);
+    }, [childNodes, knowledgeTreeService]); // Remove selectedSubtopic from dependencies
 
     useEffect(() => {
         const fetchRootNodes = async () => {
@@ -247,11 +257,15 @@ const KnowledgeTree = () => {
             try {
                 // Get the target node
                 const node = await knowledgeTreeService.getNode(state.selectedNodeId);
-                if (!node) return;
+                if (!node) {
+                    console.error('Node not found:', state.selectedNodeId);
+                    setError('Node not found');
+                    return;
+                }
 
                 // Use provided parent chain if available, otherwise fetch it
                 let parentChain = state.parentChain || [];
-                if (!parentChain.length) {
+                if (!parentChain.length && node.parentId) {
                     // Get all parent nodes in a chain
                     let currentNode = { ...node };
                     while (currentNode.parentId) {
@@ -260,6 +274,7 @@ const KnowledgeTree = () => {
                             parentChain.unshift(parent);
                             currentNode = parent;
                         } else {
+                            console.warn('Parent node not found:', currentNode.parentId);
                             break;
                         }
                     }
@@ -275,23 +290,19 @@ const KnowledgeTree = () => {
                 ]);
                 setExpandedBranches(newExpanded);
                 
-                // Load all children in parallel, including children of Learning Plan
+                // Load all children in parallel
                 const loadPromises = [...parentChain, node].map(async (n) => {
-                    const children = await knowledgeTreeService.getChildren(n.id);
-                    if (children && children.length > 0) {
-                        return [n.id, children];
+                    if (!n || !n.id) return null;
+                    try {
+                        const children = await knowledgeTreeService.getChildren(n.id);
+                        if (children && children.length > 0) {
+                            return [n.id, children];
+                        }
+                    } catch (error) {
+                        console.warn(`Failed to load children for node ${n.id}:`, error);
                     }
                     return null;
                 });
-
-                // Also load children of Learning Plan if it's in the parent chain
-                const learningPlanNode = parentChain.find(n => n.name === 'Learning Plan');
-                if (learningPlanNode) {
-                    const learningPlanChildren = await knowledgeTreeService.getChildren(learningPlanNode.id);
-                    if (learningPlanChildren && learningPlanChildren.length > 0) {
-                        loadPromises.push([learningPlanNode.id, learningPlanChildren]);
-                    }
-                }
 
                 const results = await Promise.all(loadPromises);
                 const newChildNodes = {};
@@ -311,8 +322,8 @@ const KnowledgeTree = () => {
                 navigationHandled.current = true;
 
                 // If shouldSuggest is true, trigger populate
-                if (state.shouldSuggest) {
-                    handlePopulate();
+                if (state.shouldSuggest && node) {
+                    await handlePopulate();
                 }
             } catch (error) {
                 console.error('Error in navigation:', error);
@@ -424,7 +435,22 @@ const KnowledgeTree = () => {
     const handleSearch = async (e) => {
         const query = e.target.value;
         setSearchQuery(query);
-        if (query.trim()) {
+        if (!query.trim()) {
+            try {
+                console.log('Clearing search, fetching root nodes');
+                const nodes = await knowledgeTreeService.getRootNodes();
+                console.log('Root nodes received:', nodes);
+                setRootNodes(nodes);
+                // Don't reset selected topic when clearing search
+                if (!isPopulating) {
+                    setExpandedBranches(new Set());
+                    setChildNodes({});
+                }
+            } catch (err) {
+                console.error('Error fetching root nodes:', err);
+                setError('Failed to load knowledge tree');
+            }
+        } else {
             try {
                 console.log('Searching for:', query);
                 const results = await knowledgeTreeService.searchNodes(query);
@@ -484,19 +510,6 @@ const KnowledgeTree = () => {
             } catch (err) {
                 console.error('Search error:', err);
                 setError('Failed to search knowledge tree');
-            }
-        } else {
-            try {
-                console.log('Clearing search, fetching root nodes');
-                const nodes = await knowledgeTreeService.getRootNodes();
-                console.log('Root nodes received:', nodes);
-                setRootNodes(nodes);
-                setSelectedSubtopic(null);
-                setExpandedBranches(new Set());
-                setChildNodes({});
-            } catch (err) {
-                console.error('Error fetching root nodes:', err);
-                setError('Failed to load knowledge tree');
             }
         }
     };
@@ -945,9 +958,19 @@ const KnowledgeTree = () => {
                             <button
                                 onClick={handlePopulate}
                                 disabled={isPopulating}
-                                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400"
+                                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 flex items-center space-x-2"
                             >
-                                {isPopulating ? 'Suggesting...' : 'Suggest'}
+                                {isPopulating ? (
+                                    <>
+                                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        <span>Generating Learning Plan...</span>
+                                    </>
+                                ) : (
+                                    'Suggest'
+                                )}
                             </button>
                         )}
                         {!hasChildren && (
@@ -966,6 +989,20 @@ const KnowledgeTree = () => {
                         </button>
                     </div>
                 </div>
+                {error && (
+                    <div className="mb-4 p-4 bg-red-50 text-red-600 rounded-md">
+                        {error}
+                    </div>
+                )}
+                {isPopulating && (
+                    <div className="mb-4 p-4 bg-blue-50 text-blue-600 rounded-md flex items-center space-x-2">
+                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span>Generating Learning Plan... This may take a minute.</span>
+                    </div>
+                )}
                 {selectedSubtopic.description && (
                     <div className="mb-6">
                         <h3 className="text-xl font-semibold mb-2">Description</h3>

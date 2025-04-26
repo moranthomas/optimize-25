@@ -26,4 +26,7 @@ public interface KnowledgeNodeRepository extends JpaRepository<KnowledgeNode, Lo
 
     @Query("SELECT MAX(kn.nodeOrder) FROM KnowledgeNode kn WHERE kn.parent.id = :parentId")
     Integer findMaxNodeOrderByParentId(@Param("parentId") Long parentId);
+
+    @Query("SELECT k.name FROM KnowledgeNode k WHERE k.parent.id = :parentId")
+    List<String> findChildrenNamesByParentId(@Param("parentId") Long parentId);
 } 
