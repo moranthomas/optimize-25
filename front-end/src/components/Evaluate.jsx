@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const Evaluate = () => {
     const [topic, setTopic] = useState('');
@@ -7,6 +8,7 @@ const Evaluate = () => {
     const [score, setScore] = useState(null);
     const [loading, setLoading] = useState(false);
     const [submitted, setSubmitted] = useState(false);
+    const navigate = useNavigate();
 
     const handleSubmitTopic = async (e) => {
         e.preventDefault();
@@ -151,14 +153,11 @@ const Evaluate = () => {
                     </p>
                     <button
                         onClick={() => {
-                            setQuestions([]);
-                            setUserAnswers({});
-                            setScore(null);
-                            setSubmitted(false);
+                            navigate('/track', { state: { topic } });
                         }}
                         className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                     >
-                        Try Another Quiz
+                        Track Progress
                     </button>
                 </div>
             )}

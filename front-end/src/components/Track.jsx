@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Line } from 'react-chartjs-2';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -28,10 +29,16 @@ export default function Track() {
   const [error, setError] = useState(null);
   const [selectedTopic, setSelectedTopic] = useState('all');
   const [topics, setTopics] = useState([]);
+  const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
+    // If we have a topic from navigation state, set it as the selected topic
+    if (location.state?.topic) {
+      setSelectedTopic(location.state.topic);
+    }
     fetchQuizHistory();
-  }, [selectedTopic]);
+  }, [selectedTopic, location.state?.topic]);
 
   const fetchQuizHistory = async () => {
     try {
@@ -137,6 +144,21 @@ export default function Track() {
           <>
             <div className="mb-8 h-80">
               <Line data={prepareChartData()} options={chartOptions} />
+            </div>
+
+            {/* New Personalized Learning Plan Section */}
+            <div className="mb-8 p-6 bg-blue-50 rounded-lg">
+              <h2 className="text-xl font-semibold mb-4">Personalized Learning Plan</h2>
+              <p className="text-gray-700 mb-4">
+                Based on your test evaluation and progress for {selectedTopic === 'all' ? 'all subjects' : `"${selectedTopic}"`}, 
+                I've created the following personally tailored learning plan for you.
+              </p>
+              <button
+                onClick={() => navigate('/knowledge')}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                View Learning Plan
+              </button>
             </div>
 
             <div className="mt-8">
