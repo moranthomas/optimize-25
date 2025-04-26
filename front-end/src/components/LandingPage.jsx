@@ -144,7 +144,7 @@ const LandingPage = () => {
             Ready to Accelerate Your Learning?
           </h2>
           <p className="text-xl text-gray-600 mb-8">
-            Join thousands of learners who are already experiencing the power of AI-driven education
+            Get ready to experience the power of AI-driven education
           </p>
           <Link
             to="/knowledge"

@@ -29,35 +29,47 @@ export default function Track() {
   const [error, setError] = useState(null);
   const [selectedTopic, setSelectedTopic] = useState('all');
   const [topics, setTopics] = useState([]);
+  const [allQuizHistory, setAllQuizHistory] = useState([]); // Store complete history
   const location = useLocation();
   const navigate = useNavigate();
 
   useEffect(() => {
-    // If we have a topic from navigation state, set it as the selected topic
     if (location.state?.topic) {
       setSelectedTopic(location.state.topic);
     }
-    fetchQuizHistory();
-  }, [selectedTopic, location.state?.topic]);
+    fetchAllQuizHistory();
+  }, [location.state?.topic]);
 
-  const fetchQuizHistory = async () => {
+  useEffect(() => {
+    if (selectedTopic === 'all') {
+      setQuizHistory(allQuizHistory);
+    } else {
+      setQuizHistory(allQuizHistory.filter(quiz => quiz.topic === selectedTopic));
+    }
+  }, [selectedTopic, allQuizHistory]);
+
+  const fetchAllQuizHistory = async () => {
     try {
       setLoading(true);
       setError(null);
-      const url = selectedTopic === 'all' 
-        ? '/api/evaluate/history'
-        : `/api/evaluate/history/${selectedTopic}`;
       
-      const response = await fetch(url);
+      const response = await fetch('/api/evaluate/history');
       if (!response.ok) {
         throw new Error('Failed to fetch quiz history');
       }
       const data = await response.json();
-      setQuizHistory(data);
+      setAllQuizHistory(data);
       
-      // Extract unique topics
+      // Set the complete list of unique topics
       const uniqueTopics = [...new Set(data.map(quiz => quiz.topic))];
       setTopics(uniqueTopics);
+
+      // Set initial quiz history based on selected topic
+      if (selectedTopic === 'all') {
+        setQuizHistory(data);
+      } else {
+        setQuizHistory(data.filter(quiz => quiz.topic === selectedTopic));
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -70,27 +82,99 @@ export default function Track() {
       new Date(a.createdAt) - new Date(b.createdAt)
     );
 
-    return {
-      labels: sortedHistory.map(quiz => new Date(quiz.createdAt).toLocaleDateString()),
-      datasets: [{
-        label: 'Quiz Scores',
-        data: sortedHistory.map(quiz => quiz.score),
+    // Group quiz results by topic
+    const quizzesByTopic = sortedHistory.reduce((acc, quiz) => {
+      if (!acc[quiz.topic]) {
+        acc[quiz.topic] = [];
+      }
+      acc[quiz.topic].push(quiz);
+      return acc;
+    }, {});
+
+    // Generate a unique color for each topic
+    const colors = [
+      'rgb(59, 130, 246)', // blue-500
+      'rgb(16, 185, 129)', // green-500
+      'rgb(245, 158, 11)', // amber-500
+      'rgb(239, 68, 68)',  // red-500
+      'rgb(139, 92, 246)', // purple-500
+      'rgb(236, 72, 153)', // pink-500
+      'rgb(14, 165, 233)', // sky-500
+      'rgb(168, 85, 247)', // violet-500
+      'rgb(234, 88, 12)',  // orange-500
+    ];
+
+    // Format the timestamp for display
+    const formatTimestamp = (timestamp) => {
+      const date = new Date(timestamp);
+      return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    };
+
+    // Get all timestamps for x-axis
+    const allTimestamps = sortedHistory.map(quiz => quiz.createdAt)
+      .sort((a, b) => new Date(a) - new Date(b));
+
+    // Create datasets for each topic
+    const datasets = Object.entries(quizzesByTopic).map(([topic, quizzes], index) => {
+      const colorIndex = index % colors.length;
+      
+      // Create a map of timestamp to score for this topic
+      const timestampScoreMap = quizzes.reduce((acc, quiz) => {
+        acc[quiz.createdAt] = quiz.score;
+        return acc;
+      }, {});
+
+      // Get data points for this topic
+      const data = allTimestamps.map(timestamp => timestampScoreMap[timestamp] || null);
+
+      return {
+        label: topic,
+        data: data,
+        borderColor: colors[colorIndex],
+        backgroundColor: colors[colorIndex],
         fill: false,
-        borderColor: 'rgb(75, 192, 192)',
-        tension: 0.1
-      }]
+        tension: 0.1,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        spanGaps: true
+      };
+    });
+
+    return {
+      labels: allTimestamps.map(formatTimestamp),
+      datasets
     };
   };
 
   const chartOptions = {
     responsive: true,
+    interaction: {
+      mode: 'index',
+      intersect: false,
+    },
     plugins: {
       legend: {
         position: 'top',
+        labels: {
+          usePointStyle: true,
+          padding: 20,
+          font: {
+            size: 12
+          }
+        }
       },
       title: {
         display: true,
-        text: 'Quiz Performance Over Time'
+        text: selectedTopic === 'all' ? 'Quiz Performance Across All Topics' : `Quiz Performance for ${selectedTopic}`,
+        font: {
+          size: 16,
+          weight: 'bold'
+        }
+      },
+      tooltip: {
+        callbacks: {
+          title: (context) => context[0].label
+        }
       }
     },
     scales: {
@@ -100,6 +184,16 @@ export default function Track() {
         title: {
           display: true,
           text: 'Score (%)'
+        }
+      },
+      x: {
+        title: {
+          display: true,
+          text: 'Date & Time'
+        },
+        ticks: {
+          maxRotation: 45,
+          minRotation: 45
         }
       }
     }
