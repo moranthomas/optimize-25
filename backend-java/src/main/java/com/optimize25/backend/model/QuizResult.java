@@ -1,6 +1,7 @@
 package com.optimize25.backend.model;
 
 import jakarta.persistence.*;
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import java.time.LocalDateTime;
 
 @Entity
@@ -18,6 +19,11 @@ public class QuizResult {
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
+
+    @JsonBackReference
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
     public QuizResult() {
         this.createdAt = LocalDateTime.now();
@@ -53,5 +59,13 @@ public class QuizResult {
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public User getUser() {
+        return user;
+    }
+
+    public void setUser(User user) {
+        this.user = user;
     }
 } 

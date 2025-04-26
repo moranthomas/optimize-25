@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import KnowledgeTree from './components/KnowledgeTree';
 import Evaluate from './components/Evaluate';
+import Track from './components/Track';
 import AskDialog from './components/AskDialog';
 import robotLogo from './assets/Opt25.png';
 import './App.css'
@@ -11,6 +12,7 @@ function Navigation() {
   const isHome = location.pathname === '/';
   const isKnowledge = location.pathname === '/knowledge';
   const isEvaluate = location.pathname === '/evaluate';
+  const isTrack = location.pathname === '/track';
 
   return (
     <nav className="bg-white shadow-sm">
@@ -41,6 +43,16 @@ function Navigation() {
                 }`}
               >
                 Evaluate
+              </Link>
+              <Link
+                to="/track"
+                className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
+                  isTrack
+                    ? 'border-blue-500 text-gray-900'
+                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                }`}
+              >
+                Track Progress
               </Link>
               <Link
                 to="/knowledge"
@@ -77,6 +89,7 @@ function App() {
             } />
             <Route path="/knowledge" element={<KnowledgeTree />} />
             <Route path="/evaluate" element={<Evaluate />} />
+            <Route path="/track" element={<Track />} />
           </Routes>
         </main>
 

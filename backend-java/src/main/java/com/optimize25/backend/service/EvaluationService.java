@@ -3,6 +3,7 @@ package com.optimize25.backend.service;
 import com.optimize25.backend.model.Question;
 import com.optimize25.backend.model.QuizResult;
 import com.optimize25.backend.model.QuizSubmission;
+import com.optimize25.backend.model.User;
 import com.optimize25.backend.repository.QuizResultRepository;
 import com.optimize25.backend.config.OpenAiConfig;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,6 +31,9 @@ public class EvaluationService {
 
     @Autowired
     private QuizResultRepository quizResultRepository;
+
+    @Autowired
+    private UserService userService;
 
     @Autowired
     private OpenAiConfig openAiConfig;
@@ -157,10 +161,14 @@ public class EvaluationService {
 
         double score = (double) correctAnswers / questions.size() * 100;
 
+        // Get the guest user
+        User guestUser = userService.getOrCreateGuestUser();
+
         // Save the quiz result
         QuizResult quizResult = new QuizResult();
         quizResult.setTopic(submission.getTopic());
         quizResult.setScore(score);
+        quizResult.setUser(guestUser);
         quizResultRepository.save(quizResult);
 
         Map<String, Object> result = new HashMap<>();
@@ -168,7 +176,7 @@ public class EvaluationService {
         result.put("correctAnswers", correctAnswers);
         result.put("totalQuestions", questions.size());
 
-        // Get previous results for this topic
+        // Get previous results for this topic and user
         List<QuizResult> previousResults = quizResultRepository.findByTopicOrderByCreatedAtDesc(submission.getTopic());
         if (!previousResults.isEmpty()) {
             result.put("previousBestScore", previousResults.stream()
